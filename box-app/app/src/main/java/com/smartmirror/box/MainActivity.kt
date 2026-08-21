@@ -2,6 +2,9 @@ package com.smartmirror.box
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -20,13 +23,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -65,6 +68,9 @@ class MainActivity : ComponentActivity() {
             onError = { /* surfaced later once we have a status UI */ }
         )
 
+        val shirtBitmap = loadAssetBitmap("products/shirt_placeholder_front.png")
+        val pantsBitmap = loadAssetBitmap("products/pants_placeholder_front.png")
+
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -74,7 +80,7 @@ class MainActivity : ComponentActivity() {
                                 analysisExecutor = analysisExecutor,
                                 onFrame = { imageProxy -> poseLandmarkerHelper.detectAsync(imageProxy) }
                             )
-                            PoseOverlay(latestPose)
+                            PoseOverlay(latestPose, shirtBitmap, pantsBitmap)
                         }
                     } else {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -85,6 +91,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun loadAssetBitmap(path: String): Bitmap =
+        assets.open(path).use { BitmapFactory.decodeStream(it) }
 
     override fun onDestroy() {
         super.onDestroy()
@@ -128,7 +137,7 @@ private fun CameraPreviewScreen(
     )
 }
 
-// BlazePose landmark indices used to approximate the torso region.
+// BlazePose landmark indices used to approximate the torso/leg region.
 private const val LEFT_SHOULDER = 11
 private const val RIGHT_SHOULDER = 12
 private const val LEFT_HIP = 23
@@ -136,8 +145,34 @@ private const val RIGHT_HIP = 24
 private const val LEFT_ANKLE = 27
 private const val RIGHT_ANKLE = 28
 
+// Maps the bitmap's 4 corners onto an arbitrary quad (topLeft, topRight,
+// bottomRight, bottomLeft) via a projective transform, so a rectangular product
+// image warps onto the body's tracked pose instead of being drawn as a flat block.
+private fun DrawScope.drawWarpedGarment(
+    bitmap: Bitmap,
+    topLeft: Offset,
+    topRight: Offset,
+    bottomRight: Offset,
+    bottomLeft: Offset
+) {
+    val src = floatArrayOf(
+        0f, 0f,
+        bitmap.width.toFloat(), 0f,
+        bitmap.width.toFloat(), bitmap.height.toFloat(),
+        0f, bitmap.height.toFloat()
+    )
+    val dst = floatArrayOf(
+        topLeft.x, topLeft.y,
+        topRight.x, topRight.y,
+        bottomRight.x, bottomRight.y,
+        bottomLeft.x, bottomLeft.y
+    )
+    val matrix = Matrix().apply { setPolyToPoly(src, 0, dst, 0, 4) }
+    drawIntoCanvas { canvas -> canvas.nativeCanvas.drawBitmap(bitmap, matrix, null) }
+}
+
 @Composable
-private fun PoseOverlay(result: PoseLandmarkerResult?) {
+private fun PoseOverlay(result: PoseLandmarkerResult?, shirtBitmap: Bitmap, pantsBitmap: Bitmap) {
     if (result == null || result.landmarks().isEmpty()) return
     val landmarks = result.landmarks()[0]
     if (landmarks.size <= RIGHT_ANKLE) return
@@ -145,30 +180,13 @@ private fun PoseOverlay(result: PoseLandmarkerResult?) {
     fun point(index: Int, width: Float, height: Float) =
         Offset(landmarks[index].x() * width, landmarks[index].y() * height)
 
-    // Pushes a left/right pair apart around their midpoint so the garment covers
-    // real body width instead of just the skeleton's joint-to-joint centerline.
+    // Pushes a left/right pair apart around their midpoint. The garment images
+    // already include their own sleeve/leg width, so this only needs to scale
+    // the quad to roughly match body size, not fake the garment shape itself.
     fun widen(left: Offset, right: Offset, factor: Float): Pair<Offset, Offset> {
         val midX = (left.x + right.x) / 2f
         return Offset(midX + (left.x - midX) * factor, left.y) to
             Offset(midX + (right.x - midX) * factor, right.y)
-    }
-
-    // A fixed-width band around the hip->ankle segment, so each leg reads as its
-    // own tube instead of one trapezoid spanning both legs (which erases the gap
-    // between them).
-    fun legBand(hip: Offset, ankle: Offset, halfWidth: Float): Path {
-        val dx = ankle.x - hip.x
-        val dy = ankle.y - hip.y
-        val len = kotlin.math.sqrt(dx * dx + dy * dy).takeIf { it > 0f } ?: 1f
-        val perpX = -dy / len * halfWidth
-        val perpY = dx / len * halfWidth
-        return Path().apply {
-            moveTo(hip.x + perpX, hip.y + perpY)
-            lineTo(ankle.x + perpX, ankle.y + perpY)
-            lineTo(ankle.x - perpX, ankle.y - perpY)
-            lineTo(hip.x - perpX, hip.y - perpY)
-            close()
-        }
     }
 
     Canvas(modifier = Modifier.fillMaxSize()) {
@@ -187,29 +205,13 @@ private fun PoseOverlay(result: PoseLandmarkerResult?) {
         val (leftShoulder, rightShoulder) = widen(liftedLeftShoulder, liftedRightShoulder, 1.5f)
         val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 1.55f)
 
-        val shirtPath = Path().apply {
-            moveTo(leftShoulder.x, leftShoulder.y)
-            lineTo(rightShoulder.x, rightShoulder.y)
-            lineTo(rightHip.x, rightHip.y)
-            lineTo(leftHip.x, leftHip.y)
-            close()
-        }
-        drawPath(shirtPath, color = Color(0x99FF5722))
+        drawWarpedGarment(shirtBitmap, leftShoulder, rightShoulder, rightHip, leftHip)
 
-        val leftAnkle = point(LEFT_ANKLE, size.width, size.height)
-        val rightAnkle = point(RIGHT_ANKLE, size.width, size.height)
-        val shoulderWidth = kotlin.math.abs(rawRightShoulder.x - rawLeftShoulder.x)
-        val legHalfWidth = shoulderWidth * 0.22f
-
-        drawPath(legBand(rawLeftHip, leftAnkle, legHalfWidth), color = Color(0x993F51B5))
-        drawPath(legBand(rawRightHip, rightAnkle, legHalfWidth), color = Color(0x993F51B5))
-
-        for (landmark in landmarks) {
-            drawCircle(
-                color = Color.Green,
-                radius = 5f,
-                center = Offset(landmark.x() * size.width, landmark.y() * size.height)
-            )
-        }
+        val (leftAnkle, rightAnkle) = widen(
+            point(LEFT_ANKLE, size.width, size.height),
+            point(RIGHT_ANKLE, size.width, size.height),
+            1.4f
+        )
+        drawWarpedGarment(pantsBitmap, leftHip, rightHip, rightAnkle, leftAnkle)
     }
 }
