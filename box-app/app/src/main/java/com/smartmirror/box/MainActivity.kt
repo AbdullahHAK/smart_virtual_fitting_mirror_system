@@ -117,18 +117,12 @@ private fun CameraPreviewScreen(
             val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
             cameraProviderFuture.addListener({
                 val cameraProvider = cameraProviderFuture.get()
-                @Suppress("DEPRECATION")
-                val rotation = (ctx.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager)
-                    .defaultDisplay.rotation
 
-                val preview = Preview.Builder()
-                    .setTargetRotation(rotation)
-                    .build().also {
-                        it.setSurfaceProvider(previewView.surfaceProvider)
-                    }
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
 
                 val imageAnalysis = ImageAnalysis.Builder()
-                    .setTargetRotation(rotation)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
