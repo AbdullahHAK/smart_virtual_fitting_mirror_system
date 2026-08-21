@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -140,35 +139,38 @@ private fun CameraPreviewScreen(
 // BlazePose landmark indices used to approximate the torso/leg region.
 private const val LEFT_SHOULDER = 11
 private const val RIGHT_SHOULDER = 12
+private const val LEFT_ELBOW = 13
+private const val RIGHT_ELBOW = 14
 private const val LEFT_HIP = 23
 private const val RIGHT_HIP = 24
+private const val LEFT_KNEE = 25
+private const val RIGHT_KNEE = 26
 private const val LEFT_ANKLE = 27
 private const val RIGHT_ANKLE = 28
 
-// Maps the bitmap's 4 corners onto an arbitrary quad (topLeft, topRight,
-// bottomRight, bottomLeft) via a projective transform, so a rectangular product
-// image warps onto the body's tracked pose instead of being drawn as a flat block.
-private fun DrawScope.drawWarpedGarment(
+// Warps the bitmap onto a 2-column x 3-row mesh (top/mid/bottom-left and
+// -right) instead of a single rigid quad. Placing the middle row at the
+// elbow/knee lets the sleeve or leg bend with the limb instead of the whole
+// image being stretched as one flat plane.
+private fun DrawScope.drawMeshWarpedGarment(
     bitmap: Bitmap,
     topLeft: Offset,
     topRight: Offset,
-    bottomRight: Offset,
-    bottomLeft: Offset
+    midLeft: Offset,
+    midRight: Offset,
+    bottomLeft: Offset,
+    bottomRight: Offset
 ) {
-    val src = floatArrayOf(
-        0f, 0f,
-        bitmap.width.toFloat(), 0f,
-        bitmap.width.toFloat(), bitmap.height.toFloat(),
-        0f, bitmap.height.toFloat()
+    // Row-major, top-to-bottom / left-to-right, matching drawBitmapMesh's
+    // implicit uniform source grid for meshWidth=1, meshHeight=2.
+    val verts = floatArrayOf(
+        topLeft.x, topLeft.y, topRight.x, topRight.y,
+        midLeft.x, midLeft.y, midRight.x, midRight.y,
+        bottomLeft.x, bottomLeft.y, bottomRight.x, bottomRight.y
     )
-    val dst = floatArrayOf(
-        topLeft.x, topLeft.y,
-        topRight.x, topRight.y,
-        bottomRight.x, bottomRight.y,
-        bottomLeft.x, bottomLeft.y
-    )
-    val matrix = Matrix().apply { setPolyToPoly(src, 0, dst, 0, 4) }
-    drawIntoCanvas { canvas -> canvas.nativeCanvas.drawBitmap(bitmap, matrix, null) }
+    drawIntoCanvas { canvas ->
+        canvas.nativeCanvas.drawBitmapMesh(bitmap, 1, 2, verts, 0, null, 0, null)
+    }
 }
 
 @Composable
@@ -204,14 +206,34 @@ private fun PoseOverlay(result: PoseLandmarkerResult?, shirtBitmap: Bitmap, pant
 
         val (leftShoulder, rightShoulder) = widen(liftedLeftShoulder, liftedRightShoulder, 1.5f)
         val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 1.55f)
+        val (leftElbow, rightElbow) = widen(
+            point(LEFT_ELBOW, size.width, size.height),
+            point(RIGHT_ELBOW, size.width, size.height),
+            1.15f
+        )
 
-        drawWarpedGarment(shirtBitmap, leftShoulder, rightShoulder, rightHip, leftHip)
+        drawMeshWarpedGarment(
+            shirtBitmap,
+            topLeft = leftShoulder, topRight = rightShoulder,
+            midLeft = leftElbow, midRight = rightElbow,
+            bottomLeft = leftHip, bottomRight = rightHip
+        )
 
+        val (leftKnee, rightKnee) = widen(
+            point(LEFT_KNEE, size.width, size.height),
+            point(RIGHT_KNEE, size.width, size.height),
+            1.45f
+        )
         val (leftAnkle, rightAnkle) = widen(
             point(LEFT_ANKLE, size.width, size.height),
             point(RIGHT_ANKLE, size.width, size.height),
             1.4f
         )
-        drawWarpedGarment(pantsBitmap, leftHip, rightHip, rightAnkle, leftAnkle)
+        drawMeshWarpedGarment(
+            pantsBitmap,
+            topLeft = leftHip, topRight = rightHip,
+            midLeft = leftKnee, midRight = rightKnee,
+            bottomLeft = leftAnkle, bottomRight = rightAnkle
+        )
     }
 }
