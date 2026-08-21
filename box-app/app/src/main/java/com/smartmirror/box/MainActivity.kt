@@ -184,8 +184,8 @@ private fun PoseOverlay(result: PoseLandmarkerResult?) {
         val liftedLeftShoulder = rawLeftShoulder.copy(y = rawLeftShoulder.y - collarLift)
         val liftedRightShoulder = rawRightShoulder.copy(y = rawRightShoulder.y - collarLift)
 
-        val (leftShoulder, rightShoulder) = widen(liftedLeftShoulder, liftedRightShoulder, 1.3f)
-        val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 1.35f)
+        val (leftShoulder, rightShoulder) = widen(liftedLeftShoulder, liftedRightShoulder, 1.5f)
+        val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 1.55f)
 
         val shirtPath = Path().apply {
             moveTo(leftShoulder.x, leftShoulder.y)
@@ -199,7 +199,7 @@ private fun PoseOverlay(result: PoseLandmarkerResult?) {
         val leftAnkle = point(LEFT_ANKLE, size.width, size.height)
         val rightAnkle = point(RIGHT_ANKLE, size.width, size.height)
         val shoulderWidth = kotlin.math.abs(rawRightShoulder.x - rawLeftShoulder.x)
-        val legHalfWidth = shoulderWidth * 0.16f
+        val legHalfWidth = shoulderWidth * 0.22f
 
         drawPath(legBand(rawLeftHip, leftAnkle, legHalfWidth), color = Color(0x993F51B5))
         drawPath(legBand(rawRightHip, rightAnkle, legHalfWidth), color = Color(0x993F51B5))
