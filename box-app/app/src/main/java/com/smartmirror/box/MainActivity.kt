@@ -32,8 +32,11 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
+import fi.iki.elonen.NanoHTTPD
+import java.net.NetworkInterface
 import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
@@ -43,6 +46,9 @@ class MainActivity : ComponentActivity() {
     private val analysisExecutor = Executors.newSingleThreadExecutor()
 
     private var latestPose by mutableStateOf<PoseLandmarkerResult?>(null)
+    private var showShirt by mutableStateOf(true)
+    private var showPants by mutableStateOf(true)
+    private lateinit var commandServer: CommandServer
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -70,6 +76,12 @@ class MainActivity : ComponentActivity() {
         val shirtBitmap = loadAssetBitmap("products/shirt_placeholder_front.png")
         val pantsBitmap = loadAssetBitmap("products/pants_placeholder_front.png")
 
+        commandServer = CommandServer(port = 8080) { shirt, pants ->
+            shirt?.let { showShirt = it }
+            pants?.let { showPants = it }
+        }
+        commandServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -79,7 +91,12 @@ class MainActivity : ComponentActivity() {
                                 analysisExecutor = analysisExecutor,
                                 onFrame = { imageProxy -> poseLandmarkerHelper.detectAsync(imageProxy) }
                             )
-                            PoseOverlay(latestPose, shirtBitmap, pantsBitmap)
+                            PoseOverlay(latestPose, shirtBitmap, pantsBitmap, showShirt, showPants)
+                            Text(
+                                text = "Box IP: ${localIpAddress() ?: "unknown"}:8080",
+                                color = Color.White,
+                                modifier = Modifier.align(Alignment.TopStart)
+                            )
                         }
                     } else {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -94,10 +111,17 @@ class MainActivity : ComponentActivity() {
     private fun loadAssetBitmap(path: String): Bitmap =
         assets.open(path).use { BitmapFactory.decodeStream(it) }
 
+    private fun localIpAddress(): String? =
+        NetworkInterface.getNetworkInterfaces().asSequence()
+            .flatMap { it.inetAddresses.asSequence() }
+            .firstOrNull { !it.isLoopbackAddress && it.hostAddress?.contains(':') == false }
+            ?.hostAddress
+
     override fun onDestroy() {
         super.onDestroy()
         poseLandmarkerHelper.close()
         analysisExecutor.shutdown()
+        commandServer.stop()
     }
 }
 
@@ -174,7 +198,13 @@ private fun DrawScope.drawMeshWarpedGarment(
 }
 
 @Composable
-private fun PoseOverlay(result: PoseLandmarkerResult?, shirtBitmap: Bitmap, pantsBitmap: Bitmap) {
+private fun PoseOverlay(
+    result: PoseLandmarkerResult?,
+    shirtBitmap: Bitmap,
+    pantsBitmap: Bitmap,
+    showShirt: Boolean,
+    showPants: Boolean
+) {
     if (result == null || result.landmarks().isEmpty()) return
     val landmarks = result.landmarks()[0]
     if (landmarks.size <= RIGHT_ANKLE) return
@@ -212,12 +242,14 @@ private fun PoseOverlay(result: PoseLandmarkerResult?, shirtBitmap: Bitmap, pant
             1.15f
         )
 
-        drawMeshWarpedGarment(
-            shirtBitmap,
-            topLeft = leftShoulder, topRight = rightShoulder,
-            midLeft = leftElbow, midRight = rightElbow,
-            bottomLeft = leftHip, bottomRight = rightHip
-        )
+        if (showShirt) {
+            drawMeshWarpedGarment(
+                shirtBitmap,
+                topLeft = leftShoulder, topRight = rightShoulder,
+                midLeft = leftElbow, midRight = rightElbow,
+                bottomLeft = leftHip, bottomRight = rightHip
+            )
+        }
 
         val (leftKnee, rightKnee) = widen(
             point(LEFT_KNEE, size.width, size.height),
@@ -229,11 +261,13 @@ private fun PoseOverlay(result: PoseLandmarkerResult?, shirtBitmap: Bitmap, pant
             point(RIGHT_ANKLE, size.width, size.height),
             1.4f
         )
-        drawMeshWarpedGarment(
-            pantsBitmap,
-            topLeft = leftHip, topRight = rightHip,
-            midLeft = leftKnee, midRight = rightKnee,
-            bottomLeft = leftAnkle, bottomRight = rightAnkle
-        )
+        if (showPants) {
+            drawMeshWarpedGarment(
+                pantsBitmap,
+                topLeft = leftHip, topRight = rightHip,
+                midLeft = leftKnee, midRight = rightKnee,
+                bottomLeft = leftAnkle, bottomRight = rightAnkle
+            )
+        }
     }
 }
