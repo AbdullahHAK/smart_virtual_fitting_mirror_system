@@ -117,7 +117,9 @@ private fun CameraPreviewScreen(
             val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
             cameraProviderFuture.addListener({
                 val cameraProvider = cameraProviderFuture.get()
-                val rotation = previewView.display?.rotation ?: android.view.Surface.ROTATION_0
+                @Suppress("DEPRECATION")
+                val rotation = (ctx.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager)
+                    .defaultDisplay.rotation
 
                 val preview = Preview.Builder()
                     .setTargetRotation(rotation)
