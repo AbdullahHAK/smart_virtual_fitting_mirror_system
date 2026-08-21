@@ -153,17 +153,39 @@ private fun PoseOverlay(result: PoseLandmarkerResult?) {
             Offset(midX + (right.x - midX) * factor, right.y)
     }
 
+    // A fixed-width band around the hip->ankle segment, so each leg reads as its
+    // own tube instead of one trapezoid spanning both legs (which erases the gap
+    // between them).
+    fun legBand(hip: Offset, ankle: Offset, halfWidth: Float): Path {
+        val dx = ankle.x - hip.x
+        val dy = ankle.y - hip.y
+        val len = kotlin.math.sqrt(dx * dx + dy * dy).takeIf { it > 0f } ?: 1f
+        val perpX = -dy / len * halfWidth
+        val perpY = dx / len * halfWidth
+        return Path().apply {
+            moveTo(hip.x + perpX, hip.y + perpY)
+            lineTo(ankle.x + perpX, ankle.y + perpY)
+            lineTo(ankle.x - perpX, ankle.y - perpY)
+            lineTo(hip.x - perpX, hip.y - perpY)
+            close()
+        }
+    }
+
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val (leftShoulder, rightShoulder) = widen(
-            point(LEFT_SHOULDER, size.width, size.height),
-            point(RIGHT_SHOULDER, size.width, size.height),
-            1.3f
-        )
-        val (leftHip, rightHip) = widen(
-            point(LEFT_HIP, size.width, size.height),
-            point(RIGHT_HIP, size.width, size.height),
-            1.35f
-        )
+        val rawLeftShoulder = point(LEFT_SHOULDER, size.width, size.height)
+        val rawRightShoulder = point(RIGHT_SHOULDER, size.width, size.height)
+        val rawLeftHip = point(LEFT_HIP, size.width, size.height)
+        val rawRightHip = point(RIGHT_HIP, size.width, size.height)
+
+        // Raise the shoulder line from the joint (roughly armpit height) up toward
+        // collar height, so the shirt doesn't start at chest level.
+        val torsoHeight = ((rawLeftHip.y + rawRightHip.y) / 2f) - ((rawLeftShoulder.y + rawRightShoulder.y) / 2f)
+        val collarLift = torsoHeight * 0.18f
+        val liftedLeftShoulder = rawLeftShoulder.copy(y = rawLeftShoulder.y - collarLift)
+        val liftedRightShoulder = rawRightShoulder.copy(y = rawRightShoulder.y - collarLift)
+
+        val (leftShoulder, rightShoulder) = widen(liftedLeftShoulder, liftedRightShoulder, 1.3f)
+        val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 1.35f)
 
         val shirtPath = Path().apply {
             moveTo(leftShoulder.x, leftShoulder.y)
@@ -174,20 +196,13 @@ private fun PoseOverlay(result: PoseLandmarkerResult?) {
         }
         drawPath(shirtPath, color = Color(0x99FF5722))
 
-        val (leftAnkle, rightAnkle) = widen(
-            point(LEFT_ANKLE, size.width, size.height),
-            point(RIGHT_ANKLE, size.width, size.height),
-            1.6f
-        )
+        val leftAnkle = point(LEFT_ANKLE, size.width, size.height)
+        val rightAnkle = point(RIGHT_ANKLE, size.width, size.height)
+        val shoulderWidth = kotlin.math.abs(rawRightShoulder.x - rawLeftShoulder.x)
+        val legHalfWidth = shoulderWidth * 0.16f
 
-        val pantsPath = Path().apply {
-            moveTo(leftHip.x, leftHip.y)
-            lineTo(rightHip.x, rightHip.y)
-            lineTo(rightAnkle.x, rightAnkle.y)
-            lineTo(leftAnkle.x, leftAnkle.y)
-            close()
-        }
-        drawPath(pantsPath, color = Color(0x993F51B5))
+        drawPath(legBand(rawLeftHip, leftAnkle, legHalfWidth), color = Color(0x993F51B5))
+        drawPath(legBand(rawRightHip, rightAnkle, legHalfWidth), color = Color(0x993F51B5))
 
         for (landmark in landmarks) {
             drawCircle(
