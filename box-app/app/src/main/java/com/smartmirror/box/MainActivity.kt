@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -127,16 +128,40 @@ private fun CameraPreviewScreen(
     )
 }
 
+// BlazePose landmark indices used to approximate the torso region.
+private const val LEFT_SHOULDER = 11
+private const val RIGHT_SHOULDER = 12
+private const val LEFT_HIP = 23
+private const val RIGHT_HIP = 24
+
 @Composable
 private fun PoseOverlay(result: PoseLandmarkerResult?) {
     if (result == null || result.landmarks().isEmpty()) return
     val landmarks = result.landmarks()[0]
+    if (landmarks.size <= RIGHT_HIP) return
+
+    fun point(index: Int, width: Float, height: Float) =
+        Offset(landmarks[index].x() * width, landmarks[index].y() * height)
 
     Canvas(modifier = Modifier.fillMaxSize()) {
+        val leftShoulder = point(LEFT_SHOULDER, size.width, size.height)
+        val rightShoulder = point(RIGHT_SHOULDER, size.width, size.height)
+        val rightHip = point(RIGHT_HIP, size.width, size.height)
+        val leftHip = point(LEFT_HIP, size.width, size.height)
+
+        val shirtPath = Path().apply {
+            moveTo(leftShoulder.x, leftShoulder.y)
+            lineTo(rightShoulder.x, rightShoulder.y)
+            lineTo(rightHip.x, rightHip.y)
+            lineTo(leftHip.x, leftHip.y)
+            close()
+        }
+        drawPath(shirtPath, color = Color(0x99FF5722))
+
         for (landmark in landmarks) {
             drawCircle(
                 color = Color.Green,
-                radius = 6f,
+                radius = 5f,
                 center = Offset(landmark.x() * size.width, landmark.y() * size.height)
             )
         }
