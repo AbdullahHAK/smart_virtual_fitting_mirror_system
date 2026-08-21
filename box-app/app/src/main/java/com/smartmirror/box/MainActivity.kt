@@ -145,11 +145,25 @@ private fun PoseOverlay(result: PoseLandmarkerResult?) {
     fun point(index: Int, width: Float, height: Float) =
         Offset(landmarks[index].x() * width, landmarks[index].y() * height)
 
+    // Pushes a left/right pair apart around their midpoint so the garment covers
+    // real body width instead of just the skeleton's joint-to-joint centerline.
+    fun widen(left: Offset, right: Offset, factor: Float): Pair<Offset, Offset> {
+        val midX = (left.x + right.x) / 2f
+        return Offset(midX + (left.x - midX) * factor, left.y) to
+            Offset(midX + (right.x - midX) * factor, right.y)
+    }
+
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val leftShoulder = point(LEFT_SHOULDER, size.width, size.height)
-        val rightShoulder = point(RIGHT_SHOULDER, size.width, size.height)
-        val rightHip = point(RIGHT_HIP, size.width, size.height)
-        val leftHip = point(LEFT_HIP, size.width, size.height)
+        val (leftShoulder, rightShoulder) = widen(
+            point(LEFT_SHOULDER, size.width, size.height),
+            point(RIGHT_SHOULDER, size.width, size.height),
+            1.3f
+        )
+        val (leftHip, rightHip) = widen(
+            point(LEFT_HIP, size.width, size.height),
+            point(RIGHT_HIP, size.width, size.height),
+            1.35f
+        )
 
         val shirtPath = Path().apply {
             moveTo(leftShoulder.x, leftShoulder.y)
@@ -160,8 +174,11 @@ private fun PoseOverlay(result: PoseLandmarkerResult?) {
         }
         drawPath(shirtPath, color = Color(0x99FF5722))
 
-        val leftAnkle = point(LEFT_ANKLE, size.width, size.height)
-        val rightAnkle = point(RIGHT_ANKLE, size.width, size.height)
+        val (leftAnkle, rightAnkle) = widen(
+            point(LEFT_ANKLE, size.width, size.height),
+            point(RIGHT_ANKLE, size.width, size.height),
+            1.6f
+        )
 
         val pantsPath = Path().apply {
             moveTo(leftHip.x, leftHip.y)
