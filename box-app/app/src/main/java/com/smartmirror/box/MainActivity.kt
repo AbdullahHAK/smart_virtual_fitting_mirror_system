@@ -133,12 +133,14 @@ private const val LEFT_SHOULDER = 11
 private const val RIGHT_SHOULDER = 12
 private const val LEFT_HIP = 23
 private const val RIGHT_HIP = 24
+private const val LEFT_ANKLE = 27
+private const val RIGHT_ANKLE = 28
 
 @Composable
 private fun PoseOverlay(result: PoseLandmarkerResult?) {
     if (result == null || result.landmarks().isEmpty()) return
     val landmarks = result.landmarks()[0]
-    if (landmarks.size <= RIGHT_HIP) return
+    if (landmarks.size <= RIGHT_ANKLE) return
 
     fun point(index: Int, width: Float, height: Float) =
         Offset(landmarks[index].x() * width, landmarks[index].y() * height)
@@ -157,6 +159,18 @@ private fun PoseOverlay(result: PoseLandmarkerResult?) {
             close()
         }
         drawPath(shirtPath, color = Color(0x99FF5722))
+
+        val leftAnkle = point(LEFT_ANKLE, size.width, size.height)
+        val rightAnkle = point(RIGHT_ANKLE, size.width, size.height)
+
+        val pantsPath = Path().apply {
+            moveTo(leftHip.x, leftHip.y)
+            lineTo(rightHip.x, rightHip.y)
+            lineTo(rightAnkle.x, rightAnkle.y)
+            lineTo(leftAnkle.x, leftAnkle.y)
+            close()
+        }
+        drawPath(pantsPath, color = Color(0x993F51B5))
 
         for (landmark in landmarks) {
             drawCircle(
