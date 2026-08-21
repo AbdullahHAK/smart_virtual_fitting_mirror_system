@@ -79,6 +79,7 @@ class MainActivity : ComponentActivity() {
         commandServer = CommandServer(port = 8080) { shirt, pants ->
             shirt?.let { showShirt = it }
             pants?.let { showPants = it }
+            android.util.Log.d("MainActivity", "after update: showShirt=$showShirt showPants=$showPants")
         }
         commandServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
 

@@ -1,5 +1,6 @@
 package com.smartmirror.box
 
+import android.util.Log
 import fi.iki.elonen.NanoHTTPD
 
 // Receives commands from the Tablet Controller over the local Wi-Fi network.
@@ -16,6 +17,7 @@ class CommandServer(
         val params = session.parms
         val shirt = params["shirt"]?.let { it == "1" }
         val pants = params["pants"]?.let { it == "1" }
+        Log.d("CommandServer", "raw params=$params parsed shirt=$shirt pants=$pants")
         onSet(shirt, pants)
         return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "ok")
     }
