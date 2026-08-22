@@ -286,23 +286,28 @@ private fun PoseOverlay(
         fun leftAt(t: Float) = lerp(liftedLeftShoulder, rawLeftHip, t)
         fun rightAt(t: Float) = lerp(liftedRightShoulder, rawRightHip, t)
 
-        // Independent widen-factor per row instead of one constant: chest pushes
-        // out further than the shoulder line, hem compensates for hip landmarks
-        // sitting anatomically closer together than shoulder landmarks do.
-        fun band(t: Float, widenFactor: Float) = widen(leftAt(t), rightAt(t), widenFactor)
+        // Places a row at an EXPLICIT absolute width, centered on that row's own
+        // landmark-anchored midpoint (still using each side's own Y, so it keeps
+        // following body tilt). Deriving width as a ratio of chestWidth directly
+        // — rather than a multiplier applied to the naturally-shrinking
+        // shoulder->hip base line — guarantees the waist/hem-to-chest
+        // relationship holds regardless of any individual's shoulder/hip ratio,
+        // instead of two independently-tuned numbers happening to combine into
+        // the right result for whichever body was last tested.
+        fun bandWithWidth(t: Float, width: Float): Pair<Offset, Offset> {
+            val l = leftAt(t)
+            val r = rightAt(t)
+            val midX = (l.x + r.x) / 2f
+            return Offset(midX - width / 2f, l.y) to Offset(midX + width / 2f, r.y)
+        }
 
-        // Single ease parameter — the widen-factor must INCREASE from chest
-        // through hem (not dip at the waist) because the underlying shoulder->hip
-        // line it's applied to is already narrowing on its own at those rows
-        // (hips sit anatomically closer together than shoulders). A dipping
-        // factor on top of an already-shrinking base is what compounded into
-        // the hourglass pinch. Monotonically non-decreasing after the chest
-        // avoids that regardless of a person's exact shoulder/hip ratio.
-        val garmentEase = 2.0f
-        val shoulderBand = band(0f, garmentEase * 0.85f)
-        val chestBand = band(0.30f, garmentEase * 1.15f)
-        val waistBand = band(0.65f, garmentEase * 1.25f)
-        val hemBand = band(1.0f, garmentEase * 1.35f)
+        val shoulderWidthPx = kotlin.math.abs(rawRightShoulder.x - rawLeftShoulder.x)
+        val chestWidth = shoulderWidthPx * 2.3f // chest is the widest reference point
+
+        val shoulderBand = bandWithWidth(0f, chestWidth * 0.90f)
+        val chestBand = bandWithWidth(0.30f, chestWidth)
+        val waistBand = bandWithWidth(0.65f, chestWidth * 0.92f) // 88-95% of chest, never below 85%
+        val hemBand = bandWithWidth(1.0f, chestWidth * 0.98f)
 
         if (showShirt) {
             drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
