@@ -204,12 +204,8 @@ private fun CameraPreviewScreen(
 // BlazePose landmark indices used to approximate the torso/leg region.
 private const val LEFT_SHOULDER = 11
 private const val RIGHT_SHOULDER = 12
-private const val LEFT_ELBOW = 13
-private const val RIGHT_ELBOW = 14
 private const val LEFT_HIP = 23
 private const val RIGHT_HIP = 24
-private const val LEFT_KNEE = 25
-private const val RIGHT_KNEE = 26
 private const val LEFT_ANKLE = 27
 private const val RIGHT_ANKLE = 28
 
