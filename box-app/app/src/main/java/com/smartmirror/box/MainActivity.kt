@@ -291,14 +291,18 @@ private fun PoseOverlay(
         // sitting anatomically closer together than shoulder landmarks do.
         fun band(t: Float, widenFactor: Float) = widen(leftAt(t), rightAt(t), widenFactor)
 
-        // Single ease parameter per the "one clear width knob" request — shaped
-        // per row (chest widest, waist eases in slightly, hem eases back out)
-        // but everything scales off this one number if it still needs tuning.
+        // Single ease parameter — the widen-factor must INCREASE from chest
+        // through hem (not dip at the waist) because the underlying shoulder->hip
+        // line it's applied to is already narrowing on its own at those rows
+        // (hips sit anatomically closer together than shoulders). A dipping
+        // factor on top of an already-shrinking base is what compounded into
+        // the hourglass pinch. Monotonically non-decreasing after the chest
+        // avoids that regardless of a person's exact shoulder/hip ratio.
         val garmentEase = 2.0f
         val shoulderBand = band(0f, garmentEase * 0.85f)
         val chestBand = band(0.30f, garmentEase * 1.15f)
-        val waistBand = band(0.65f, garmentEase * 1.05f)
-        val hemBand = band(1.0f, garmentEase * 1.10f)
+        val waistBand = band(0.65f, garmentEase * 1.25f)
+        val hemBand = band(1.0f, garmentEase * 1.35f)
 
         if (showShirt) {
             drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
