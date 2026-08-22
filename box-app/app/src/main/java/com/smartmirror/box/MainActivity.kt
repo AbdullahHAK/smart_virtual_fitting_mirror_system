@@ -201,9 +201,7 @@ private const val LEFT_ANKLE = 27
 private const val RIGHT_ANKLE = 28
 
 // Warps the bitmap onto a 2-column x 3-row mesh (top/mid/bottom-left and
-// -right) instead of a single rigid quad. Placing the middle row at the
-// elbow/knee lets the sleeve or leg bend with the limb instead of the whole
-// image being stretched as one flat plane.
+// -right) instead of a single rigid quad, via drawBitmapMesh.
 private fun DrawScope.drawMeshWarpedGarment(
     bitmap: Bitmap,
     topLeft: Offset,
@@ -249,6 +247,16 @@ private fun PoseOverlay(
             Offset(midX + (right.x - midX) * factor, right.y)
     }
 
+    // Straight-line interpolation between a top and bottom anchor, used for the
+    // mesh's middle row. Deliberately NOT tied to elbow/knee position: an
+    // earlier version anchored the shirt's mid-row to the elbows so sleeves
+    // would "bend" with the arms, but that made the whole shirt collapse
+    // inward whenever arms crossed in front of the body (very common pose) —
+    // a shirt's actual width at chest height shouldn't change just because
+    // someone crosses their arms. Trading that reactivity for reliability.
+    fun lerp(top: Offset, bottom: Offset, t: Float) =
+        Offset(top.x + (bottom.x - top.x) * t, top.y + (bottom.y - top.y) * t)
+
     Canvas(modifier = Modifier.fillMaxSize()) {
         val rawLeftShoulder = point(LEFT_SHOULDER, size.width, size.height)
         val rawRightShoulder = point(RIGHT_SHOULDER, size.width, size.height)
@@ -264,26 +272,16 @@ private fun PoseOverlay(
 
         val (leftShoulder, rightShoulder) = widen(liftedLeftShoulder, liftedRightShoulder, 1.5f)
         val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 1.55f)
-        val (leftElbow, rightElbow) = widen(
-            point(LEFT_ELBOW, size.width, size.height),
-            point(RIGHT_ELBOW, size.width, size.height),
-            1.15f
-        )
 
         if (showShirt) {
             drawMeshWarpedGarment(
                 shirtBitmap,
                 topLeft = leftShoulder, topRight = rightShoulder,
-                midLeft = leftElbow, midRight = rightElbow,
+                midLeft = lerp(leftShoulder, leftHip, 0.45f), midRight = lerp(rightShoulder, rightHip, 0.45f),
                 bottomLeft = leftHip, bottomRight = rightHip
             )
         }
 
-        val (leftKnee, rightKnee) = widen(
-            point(LEFT_KNEE, size.width, size.height),
-            point(RIGHT_KNEE, size.width, size.height),
-            1.45f
-        )
         val (leftAnkle, rightAnkle) = widen(
             point(LEFT_ANKLE, size.width, size.height),
             point(RIGHT_ANKLE, size.width, size.height),
@@ -293,7 +291,7 @@ private fun PoseOverlay(
             drawMeshWarpedGarment(
                 pantsBitmap,
                 topLeft = leftHip, topRight = rightHip,
-                midLeft = leftKnee, midRight = rightKnee,
+                midLeft = lerp(leftHip, leftAnkle, 0.5f), midRight = lerp(rightHip, rightAnkle, 0.5f),
                 bottomLeft = leftAnkle, bottomRight = rightAnkle
             )
         }
