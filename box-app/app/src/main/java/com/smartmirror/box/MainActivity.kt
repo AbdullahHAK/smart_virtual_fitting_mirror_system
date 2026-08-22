@@ -304,10 +304,15 @@ private fun PoseOverlay(
         val shoulderWidthPx = kotlin.math.abs(rawRightShoulder.x - rawLeftShoulder.x)
         val chestWidth = shoulderWidthPx * 2.3f // chest is the widest reference point
 
-        val shoulderBand = bandWithWidth(0f, chestWidth * 0.90f)
-        val chestBand = bandWithWidth(0.30f, chestWidth)
-        val waistBand = bandWithWidth(0.65f, chestWidth * 0.98f) // near-chest width, minimal taper
-        val hemBand = bandWithWidth(1.0f, chestWidth)
+        // Small, consistent per-side ease so the shirt sits just outside the
+        // torso boundary rather than tracing it exactly — closes the remaining
+        // side gap on wider/muscular bodies without another width multiplier.
+        val garmentEaseMargin = chestWidth * 0.04f // per side; adds 2x this to total width
+
+        val shoulderBand = bandWithWidth(0f, chestWidth * 0.90f + 2f * garmentEaseMargin)
+        val chestBand = bandWithWidth(0.30f, chestWidth + 2f * garmentEaseMargin)
+        val waistBand = bandWithWidth(0.65f, chestWidth * 0.98f + 2f * garmentEaseMargin) // near-chest width, minimal taper
+        val hemBand = bandWithWidth(1.0f, chestWidth + 2f * garmentEaseMargin)
 
         if (showShirt) {
             drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
