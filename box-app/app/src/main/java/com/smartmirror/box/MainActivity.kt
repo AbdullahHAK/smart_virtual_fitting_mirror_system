@@ -284,11 +284,15 @@ private fun PoseOverlay(
         val liftedRightShoulder = rawRightShoulder.copy(y = rawRightShoulder.y - collarLift)
 
         val (leftShoulder, rightShoulder) = widen(liftedLeftShoulder, liftedRightShoulder, 1.5f)
-        val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 1.55f)
+        // MediaPipe's hip landmarks sit near the pelvis, anatomically closer
+        // together than the shoulder landmarks — using a similar widen factor
+        // for both under-states hip/waist width relative to the chest, which
+        // is what was producing the tapered/triangular look. Compensating.
+        val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 2.1f)
 
-        // A tee's hem falls below the hip bone itself, not exactly at it — the
-        // shirt was ending right at the hip landmark, reading as too short.
-        val hemDrop = torsoHeight * 0.15f
+        // Previous hem-drop (0.15) overshot and reached toward the crotch;
+        // pulling it back to a more normal tee length.
+        val hemDrop = torsoHeight * 0.06f
         val leftHem = leftHip.copy(y = leftHip.y + hemDrop)
         val rightHem = rightHip.copy(y = rightHip.y + hemDrop)
 
