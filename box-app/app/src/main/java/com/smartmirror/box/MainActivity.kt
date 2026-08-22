@@ -273,12 +273,18 @@ private fun PoseOverlay(
         val (leftShoulder, rightShoulder) = widen(liftedLeftShoulder, liftedRightShoulder, 1.5f)
         val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 1.55f)
 
+        // A tee's hem falls below the hip bone itself, not exactly at it — the
+        // shirt was ending right at the hip landmark, reading as too short.
+        val hemDrop = torsoHeight * 0.15f
+        val leftHem = leftHip.copy(y = leftHip.y + hemDrop)
+        val rightHem = rightHip.copy(y = rightHip.y + hemDrop)
+
         if (showShirt) {
             drawMeshWarpedGarment(
                 shirtBitmap,
                 topLeft = leftShoulder, topRight = rightShoulder,
-                midLeft = lerp(leftShoulder, leftHip, 0.45f), midRight = lerp(rightShoulder, rightHip, 0.45f),
-                bottomLeft = leftHip, bottomRight = rightHip
+                midLeft = lerp(leftShoulder, leftHem, 0.45f), midRight = lerp(rightShoulder, rightHem, 0.45f),
+                bottomLeft = leftHem, bottomRight = rightHem
             )
         }
 
