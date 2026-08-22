@@ -213,26 +213,20 @@ private const val RIGHT_KNEE = 26
 private const val LEFT_ANKLE = 27
 private const val RIGHT_ANKLE = 28
 
-// Warps the bitmap onto a 2-column x 3-row mesh (top/mid/bottom-left and
-// -right) instead of a single rigid quad, via drawBitmapMesh.
-private fun DrawScope.drawMeshWarpedGarment(
-    bitmap: Bitmap,
-    topLeft: Offset,
-    topRight: Offset,
-    midLeft: Offset,
-    midRight: Offset,
-    bottomLeft: Offset,
-    bottomRight: Offset
-) {
-    // Row-major, top-to-bottom / left-to-right, matching drawBitmapMesh's
-    // implicit uniform source grid for meshWidth=1, meshHeight=2.
-    val verts = floatArrayOf(
-        topLeft.x, topLeft.y, topRight.x, topRight.y,
-        midLeft.x, midLeft.y, midRight.x, midRight.y,
-        bottomLeft.x, bottomLeft.y, bottomRight.x, bottomRight.y
-    )
+// Warps the bitmap onto a 2-column x N-row mesh via drawBitmapMesh — each row
+// is an independent (left, right) pair, so different bands of the garment
+// (e.g. shoulder/chest/waist/hem) can each have their own width instead of
+// one rigid quad or a single interpolated taper.
+private fun DrawScope.drawMeshWarpedGarment(bitmap: Bitmap, rows: List<Pair<Offset, Offset>>) {
+    val verts = FloatArray(rows.size * 4)
+    rows.forEachIndexed { i, (left, right) ->
+        verts[i * 4] = left.x
+        verts[i * 4 + 1] = left.y
+        verts[i * 4 + 2] = right.x
+        verts[i * 4 + 3] = right.y
+    }
     drawIntoCanvas { canvas ->
-        canvas.nativeCanvas.drawBitmapMesh(bitmap, 1, 2, verts, 0, null, 0, null)
+        canvas.nativeCanvas.drawBitmapMesh(bitmap, 1, rows.size - 1, verts, 0, null, 0, null)
     }
 }
 
@@ -270,41 +264,50 @@ private fun PoseOverlay(
     fun lerp(top: Offset, bottom: Offset, t: Float) =
         Offset(top.x + (bottom.x - top.x) * t, top.y + (bottom.y - top.y) * t)
 
+    fun lerpF(a: Float, b: Float, t: Float) = a + (b - a) * t
+
     Canvas(modifier = Modifier.fillMaxSize()) {
         val rawLeftShoulder = point(LEFT_SHOULDER, size.width, size.height)
         val rawRightShoulder = point(RIGHT_SHOULDER, size.width, size.height)
         val rawLeftHip = point(LEFT_HIP, size.width, size.height)
         val rawRightHip = point(RIGHT_HIP, size.width, size.height)
 
+        val shoulderCenter = Offset((rawLeftShoulder.x + rawRightShoulder.x) / 2f, (rawLeftShoulder.y + rawRightShoulder.y) / 2f)
+        val hipCenter = Offset((rawLeftHip.x + rawRightHip.x) / 2f, (rawLeftHip.y + rawRightHip.y) / 2f)
+        val shoulderWidth = kotlin.math.abs(rawRightShoulder.x - rawLeftShoulder.x)
+        val hipWidth = kotlin.math.abs(rawRightHip.x - rawLeftHip.x)
+        val torsoHeight = hipCenter.y - shoulderCenter.y
+
         // Raise the shoulder line from the joint (roughly armpit height) up toward
         // collar height, so the shirt doesn't start at chest level.
-        val torsoHeight = ((rawLeftHip.y + rawRightHip.y) / 2f) - ((rawLeftShoulder.y + rawRightShoulder.y) / 2f)
         val collarLift = torsoHeight * 0.18f
-        val liftedLeftShoulder = rawLeftShoulder.copy(y = rawLeftShoulder.y - collarLift)
-        val liftedRightShoulder = rawRightShoulder.copy(y = rawRightShoulder.y - collarLift)
+        val topY = shoulderCenter.y - collarLift
+        val shirtHeight = torsoHeight * 0.90f // LENGTH_RATIO
 
-        val (leftShoulder, rightShoulder) = widen(liftedLeftShoulder, liftedRightShoulder, 1.5f)
-        // MediaPipe's hip landmarks sit near the pelvis, anatomically closer
-        // together than the shoulder landmarks — using a similar widen factor
-        // for both under-states hip/waist width relative to the chest, which
-        // is what was producing the tapered/triangular look. Compensating.
-        val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 2.1f)
-
-        // Previous hem-drop (0.15) overshot and reached toward the crotch;
-        // pulling it back to a more normal tee length.
-        val hemDrop = torsoHeight * 0.06f
-        val leftHem = leftHip.copy(y = leftHip.y + hemDrop)
-        val rightHem = rightHip.copy(y = rightHip.y + hemDrop)
-
-        if (showShirt) {
-            drawMeshWarpedGarment(
-                shirtBitmap,
-                topLeft = leftShoulder, topRight = rightShoulder,
-                midLeft = lerp(leftShoulder, leftHem, 0.45f), midRight = lerp(rightShoulder, rightHem, 0.45f),
-                bottomLeft = leftHem, bottomRight = rightHem
-            )
+        // Independent width per band instead of one taper: shoulders are the
+        // narrowest reference, chest is deliberately wider than the shoulders
+        // (a shirt has to clear the chest, not hug the shoulder seam), waist
+        // interpolates toward hip width, hem follows hip width directly.
+        fun band(t: Float, width: Float): Pair<Offset, Offset> {
+            val centerX = lerpF(shoulderCenter.x, hipCenter.x, t)
+            val y = topY + shirtHeight * t
+            return Offset(centerX - width / 2f, y) to Offset(centerX + width / 2f, y)
         }
 
+        val chestWidth = shoulderWidth * 1.30f
+        val waistWidth = lerpF(chestWidth, hipWidth, 0.6f) * 1.10f
+        val hemWidth = hipWidth * 1.05f
+
+        val shoulderBand = band(0f, shoulderWidth * 1.1f)
+        val chestBand = band(0.30f, chestWidth)
+        val waistBand = band(0.65f, waistWidth)
+        val hemBand = band(1.0f, hemWidth)
+
+        if (showShirt) {
+            drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
+        }
+
+        val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 2.1f)
         val (leftAnkle, rightAnkle) = widen(
             point(LEFT_ANKLE, size.width, size.height),
             point(RIGHT_ANKLE, size.width, size.height),
@@ -313,9 +316,11 @@ private fun PoseOverlay(
         if (showPants) {
             drawMeshWarpedGarment(
                 pantsBitmap,
-                topLeft = leftHip, topRight = rightHip,
-                midLeft = lerp(leftHip, leftAnkle, 0.5f), midRight = lerp(rightHip, rightAnkle, 0.5f),
-                bottomLeft = leftAnkle, bottomRight = rightAnkle
+                listOf(
+                    leftHip to rightHip,
+                    lerp(leftHip, leftAnkle, 0.5f) to lerp(rightHip, rightAnkle, 0.5f),
+                    leftAnkle to rightAnkle
+                )
             )
         }
     }
