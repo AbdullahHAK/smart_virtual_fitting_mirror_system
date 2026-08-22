@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.graphics.Color
@@ -91,7 +92,14 @@ class MainActivity : ComponentActivity() {
             pants?.let { showPants = it }
             color?.let { if (shirtBitmaps.containsKey(it)) shirtColor = it }
         }
-        commandServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+        try {
+            commandServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+        } catch (e: java.io.IOException) {
+            // Port likely still held by a just-killed previous instance; the app
+            // still works for standalone testing, it just won't take commands
+            // from the tablet until the port frees up (or the phone restarts).
+            android.util.Log.e("MainActivity", "CommandServer failed to start on port 8080", e)
+        }
 
         setContent {
             MaterialTheme {
@@ -111,7 +119,15 @@ class MainActivity : ComponentActivity() {
                         }
                     } else {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Camera permission is required.")
+                            androidx.compose.foundation.layout.Column(
+                                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                            ) {
+                                Text("Camera permission is required.")
+                                androidx.compose.material3.Button(
+                                    onClick = { requestPermissionLauncher.launch(Manifest.permission.CAMERA) },
+                                    modifier = Modifier.padding(top = 12.dp)
+                                ) { Text("Grant permission") }
+                            }
                         }
                     }
                 }

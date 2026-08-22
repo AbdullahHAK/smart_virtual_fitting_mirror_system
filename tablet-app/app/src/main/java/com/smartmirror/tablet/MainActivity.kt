@@ -1,5 +1,6 @@
 package com.smartmirror.tablet
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,11 +17,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import okhttp3.Call
 import okhttp3.Callback
@@ -54,9 +58,10 @@ private fun sendCommand(
     boxIp: String,
     shirt: Boolean? = null,
     pants: Boolean? = null,
-    shirtColor: String? = null
+    shirtColor: String? = null,
+    onStatus: (Boolean) -> Unit = {}
 ) {
-    val base = "http://$boxIp:8080/set".toHttpUrlOrNull() ?: return
+    val base = "http://$boxIp:8080/set".toHttpUrlOrNull() ?: return onStatus(false)
     val url = base.newBuilder().apply {
         shirt?.let { addQueryParameter("shirt", if (it) "1" else "0") }
         pants?.let { addQueryParameter("pants", if (it) "1" else "0") }
@@ -64,18 +69,30 @@ private fun sendCommand(
     }.build()
 
     client.newCall(Request.Builder().url(url).build()).enqueue(object : Callback {
-        override fun onFailure(call: Call, e: IOException) { /* box unreachable, ignore for now */ }
-        override fun onResponse(call: Call, response: Response) { response.close() }
+        override fun onFailure(call: Call, e: IOException) = onStatus(false)
+        override fun onResponse(call: Call, response: Response) {
+            response.close()
+            onStatus(true)
+        }
     })
 }
 
-private fun fetchProducts(client: OkHttpClient, boxIp: String, onResult: (List<CatalogProduct>) -> Unit) {
-    val url = "http://$boxIp:8080/products".toHttpUrlOrNull() ?: return
+private fun fetchProducts(
+    client: OkHttpClient,
+    boxIp: String,
+    onResult: (List<CatalogProduct>) -> Unit,
+    onStatus: (Boolean) -> Unit = {}
+) {
+    val url = "http://$boxIp:8080/products".toHttpUrlOrNull() ?: return onStatus(false)
     client.newCall(Request.Builder().url(url).build()).enqueue(object : Callback {
-        override fun onFailure(call: Call, e: IOException) { /* box unreachable, ignore for now */ }
+        override fun onFailure(call: Call, e: IOException) = onStatus(false)
         override fun onResponse(call: Call, response: Response) {
             response.use {
-                val body = it.body?.string() ?: return
+                val body = it.body?.string()
+                if (body == null) {
+                    onStatus(false)
+                    return
+                }
                 val array = JSONArray(body)
                 val products = (0 until array.length()).map { i ->
                     val obj = array.getJSONObject(i)
@@ -87,6 +104,7 @@ private fun fetchProducts(client: OkHttpClient, boxIp: String, onResult: (List<C
                     )
                 }
                 onResult(products)
+                onStatus(true)
             }
         }
     })
@@ -94,20 +112,39 @@ private fun fetchProducts(client: OkHttpClient, boxIp: String, onResult: (List<C
 
 @Composable
 private fun ControllerScreen(httpClient: OkHttpClient) {
-    var boxIp by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("tablet_prefs", Context.MODE_PRIVATE) }
+
+    var boxIp by remember { mutableStateOf(prefs.getString("boxIp", "") ?: "") }
     var shirtOn by remember { mutableStateOf(true) }
     var pantsOn by remember { mutableStateOf(true) }
     var products by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
+    var connected by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(Unit) {
+        if (boxIp.isNotBlank()) {
+            fetchProducts(httpClient, boxIp, onResult = { products = it }, onStatus = { connected = it })
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
         Text("Smart Mirror Controller")
 
         OutlinedTextField(
             value = boxIp,
-            onValueChange = { boxIp = it },
+            onValueChange = {
+                boxIp = it
+                prefs.edit().putString("boxIp", it).apply()
+            },
             label = { Text("Box IP address") },
             modifier = Modifier.padding(top = 16.dp)
         )
+
+        when (connected) {
+            true -> Text("● Connected", color = Color(0xFF2E7D32), modifier = Modifier.padding(top = 4.dp))
+            false -> Text("● Box unreachable — check IP and Wi-Fi", color = Color(0xFFC62828), modifier = Modifier.padding(top = 4.dp))
+            null -> {}
+        }
 
         Row(modifier = Modifier.padding(top = 24.dp)) {
             Text("Shirt")
@@ -115,7 +152,7 @@ private fun ControllerScreen(httpClient: OkHttpClient) {
                 checked = shirtOn,
                 onCheckedChange = {
                     shirtOn = it
-                    sendCommand(httpClient, boxIp, shirt = it)
+                    sendCommand(httpClient, boxIp, shirt = it, onStatus = { ok -> connected = ok })
                 }
             )
         }
@@ -126,13 +163,15 @@ private fun ControllerScreen(httpClient: OkHttpClient) {
                 checked = pantsOn,
                 onCheckedChange = {
                     pantsOn = it
-                    sendCommand(httpClient, boxIp, pants = it)
+                    sendCommand(httpClient, boxIp, pants = it, onStatus = { ok -> connected = ok })
                 }
             )
         }
 
         Button(
-            onClick = { fetchProducts(httpClient, boxIp) { products = it } },
+            onClick = {
+                fetchProducts(httpClient, boxIp, onResult = { products = it }, onStatus = { connected = it })
+            },
             modifier = Modifier.padding(top = 24.dp)
         ) { Text("Load products from Box") }
 
@@ -141,9 +180,10 @@ private fun ControllerScreen(httpClient: OkHttpClient) {
                 Row(modifier = Modifier.padding(vertical = 8.dp)) {
                     Text(product.name, modifier = Modifier.padding(end = 16.dp))
                     Button(onClick = {
+                        val ok: (Boolean) -> Unit = { connected = it }
                         when (product.category) {
-                            "shirt" -> sendCommand(httpClient, boxIp, shirt = true, shirtColor = product.colorKey)
-                            "pants" -> sendCommand(httpClient, boxIp, pants = true)
+                            "shirt" -> sendCommand(httpClient, boxIp, shirt = true, shirtColor = product.colorKey, onStatus = ok)
+                            "pants" -> sendCommand(httpClient, boxIp, pants = true, onStatus = ok)
                         }
                     }) { Text("Wear") }
                 }
