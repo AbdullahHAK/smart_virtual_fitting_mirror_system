@@ -81,7 +81,12 @@ class MainActivity : ComponentActivity() {
         )
         val pantsBitmap = loadAssetBitmap("products/pants_placeholder_front.png")
 
-        commandServer = CommandServer(port = 8080) { shirt, pants, color ->
+        val productDb = ProductDbHelper(this)
+
+        commandServer = CommandServer(
+            port = 8080,
+            getProducts = { productDb.getAllProducts() }
+        ) { shirt, pants, color ->
             shirt?.let { showShirt = it }
             pants?.let { showPants = it }
             color?.let { if (shirtBitmaps.containsKey(it)) shirtColor = it }
