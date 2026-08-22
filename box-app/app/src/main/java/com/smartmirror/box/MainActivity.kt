@@ -36,7 +36,6 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
-import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import fi.iki.elonen.NanoHTTPD
 import java.net.NetworkInterface
 import java.util.concurrent.Executors
@@ -47,7 +46,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var poseLandmarkerHelper: PoseLandmarkerHelper
     private val analysisExecutor = Executors.newSingleThreadExecutor()
 
-    private var latestPose by mutableStateOf<PoseLandmarkerResult?>(null)
+    private var smoothedLandmarks by mutableStateOf<Pair<FloatArray, FloatArray>?>(null)
+    private var poseFps by mutableStateOf(0f)
+    private val landmarkSmoother = LandmarkSmoother()
+    private var lastPoseResultAtMs = 0L
     private var showShirt by mutableStateOf(true)
     private var showPants by mutableStateOf(true)
     private var shirtColor by mutableStateOf("blue")
@@ -72,7 +74,18 @@ class MainActivity : ComponentActivity() {
 
         poseLandmarkerHelper = PoseLandmarkerHelper(
             context = this,
-            onResult = { result, _, _ -> latestPose = result },
+            onResult = { result, _, _ ->
+                val landmarks = result.landmarks().firstOrNull()
+                if (landmarks != null) {
+                    smoothedLandmarks = landmarkSmoother.update(landmarks)
+                }
+                val now = System.currentTimeMillis()
+                if (lastPoseResultAtMs != 0L) {
+                    val deltaMs = (now - lastPoseResultAtMs).coerceAtLeast(1)
+                    poseFps = 1000f / deltaMs
+                }
+                lastPoseResultAtMs = now
+            },
             onError = { /* surfaced later once we have a status UI */ }
         )
 
@@ -111,9 +124,9 @@ class MainActivity : ComponentActivity() {
                                 analysisExecutor = analysisExecutor,
                                 onFrame = { imageProxy -> poseLandmarkerHelper.detectAsync(imageProxy) }
                             )
-                            PoseOverlay(latestPose, shirtBitmaps.getValue(shirtColor), pantsBitmap, showShirt, showPants)
+                            PoseOverlay(smoothedLandmarks, shirtBitmaps.getValue(shirtColor), pantsBitmap, showShirt, showPants)
                             Text(
-                                text = "Box IP: ${localIpAddress() ?: "unknown"}:8080",
+                                text = "Box IP: ${localIpAddress() ?: "unknown"}:8080  |  Pose FPS: ${"%.0f".format(poseFps)}",
                                 color = Color.White,
                                 modifier = Modifier.align(Alignment.TopStart)
                             )
@@ -225,18 +238,18 @@ private fun DrawScope.drawMeshWarpedGarment(
 
 @Composable
 private fun PoseOverlay(
-    result: PoseLandmarkerResult?,
+    smoothedLandmarks: Pair<FloatArray, FloatArray>?,
     shirtBitmap: Bitmap,
     pantsBitmap: Bitmap,
     showShirt: Boolean,
     showPants: Boolean
 ) {
-    if (result == null || result.landmarks().isEmpty()) return
-    val landmarks = result.landmarks()[0]
-    if (landmarks.size <= RIGHT_ANKLE) return
+    if (smoothedLandmarks == null) return
+    val (lmX, lmY) = smoothedLandmarks
+    if (lmX.size <= RIGHT_ANKLE) return
 
     fun point(index: Int, width: Float, height: Float) =
-        Offset(landmarks[index].x() * width, landmarks[index].y() * height)
+        Offset(lmX[index] * width, lmY[index] * height)
 
     // Pushes a left/right pair apart around their midpoint. The garment images
     // already include their own sleeve/leg width, so this only needs to scale
