@@ -291,10 +291,14 @@ private fun PoseOverlay(
         // sitting anatomically closer together than shoulder landmarks do.
         fun band(t: Float, widenFactor: Float) = widen(leftAt(t), rightAt(t), widenFactor)
 
-        val shoulderBand = band(0f, 1.4f)
-        val chestBand = band(0.30f, 1.9f)
-        val waistBand = band(0.65f, 1.9f)
-        val hemBand = band(1.0f, 2.1f)
+        // Single ease parameter per the "one clear width knob" request — shaped
+        // per row (chest widest, waist eases in slightly, hem eases back out)
+        // but everything scales off this one number if it still needs tuning.
+        val garmentEase = 2.0f
+        val shoulderBand = band(0f, garmentEase * 0.85f)
+        val chestBand = band(0.30f, garmentEase * 1.15f)
+        val waistBand = band(0.65f, garmentEase * 1.05f)
+        val hemBand = band(1.0f, garmentEase * 1.10f)
 
         if (showShirt) {
             drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
