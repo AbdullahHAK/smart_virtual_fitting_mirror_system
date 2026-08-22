@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -43,11 +44,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun sendCommand(client: OkHttpClient, boxIp: String, shirt: Boolean?, pants: Boolean?) {
+private fun sendCommand(
+    client: OkHttpClient,
+    boxIp: String,
+    shirt: Boolean? = null,
+    pants: Boolean? = null,
+    shirtColor: String? = null
+) {
     val base = "http://$boxIp:8080/set".toHttpUrlOrNull() ?: return
     val url = base.newBuilder().apply {
         shirt?.let { addQueryParameter("shirt", if (it) "1" else "0") }
         pants?.let { addQueryParameter("pants", if (it) "1" else "0") }
+        shirtColor?.let { addQueryParameter("shirtColor", it) }
     }.build()
 
     client.newCall(Request.Builder().url(url).build()).enqueue(object : Callback {
@@ -89,9 +97,19 @@ private fun ControllerScreen(httpClient: OkHttpClient) {
                 checked = pantsOn,
                 onCheckedChange = {
                     pantsOn = it
-                    sendCommand(httpClient, boxIp, shirt = null, pants = it)
+                    sendCommand(httpClient, boxIp, pants = it)
                 }
             )
+        }
+
+        Text("Shirt color", modifier = Modifier.padding(top = 24.dp))
+        Row(modifier = Modifier.padding(top = 8.dp)) {
+            listOf("blue", "red", "green").forEach { color ->
+                Button(
+                    onClick = { sendCommand(httpClient, boxIp, shirtColor = color) },
+                    modifier = Modifier.padding(end = 8.dp)
+                ) { Text(color) }
+            }
         }
     }
 }

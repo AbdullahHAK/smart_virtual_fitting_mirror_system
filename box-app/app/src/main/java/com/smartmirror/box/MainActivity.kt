@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private var latestPose by mutableStateOf<PoseLandmarkerResult?>(null)
     private var showShirt by mutableStateOf(true)
     private var showPants by mutableStateOf(true)
+    private var shirtColor by mutableStateOf("blue")
     private lateinit var commandServer: CommandServer
 
     private val requestPermissionLauncher =
@@ -73,13 +74,17 @@ class MainActivity : ComponentActivity() {
             onError = { /* surfaced later once we have a status UI */ }
         )
 
-        val shirtBitmap = loadAssetBitmap("products/shirt_placeholder_front.png")
+        val shirtBitmaps = mapOf(
+            "blue" to loadAssetBitmap("products/shirt_blue.png"),
+            "red" to loadAssetBitmap("products/shirt_red.png"),
+            "green" to loadAssetBitmap("products/shirt_green.png")
+        )
         val pantsBitmap = loadAssetBitmap("products/pants_placeholder_front.png")
 
-        commandServer = CommandServer(port = 8080) { shirt, pants ->
+        commandServer = CommandServer(port = 8080) { shirt, pants, color ->
             shirt?.let { showShirt = it }
             pants?.let { showPants = it }
-            android.util.Log.d("MainActivity", "after update: showShirt=$showShirt showPants=$showPants")
+            color?.let { if (shirtBitmaps.containsKey(it)) shirtColor = it }
         }
         commandServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
 
@@ -92,7 +97,7 @@ class MainActivity : ComponentActivity() {
                                 analysisExecutor = analysisExecutor,
                                 onFrame = { imageProxy -> poseLandmarkerHelper.detectAsync(imageProxy) }
                             )
-                            PoseOverlay(latestPose, shirtBitmap, pantsBitmap, showShirt, showPants)
+                            PoseOverlay(latestPose, shirtBitmaps.getValue(shirtColor), pantsBitmap, showShirt, showPants)
                             Text(
                                 text = "Box IP: ${localIpAddress() ?: "unknown"}:8080",
                                 color = Color.White,
