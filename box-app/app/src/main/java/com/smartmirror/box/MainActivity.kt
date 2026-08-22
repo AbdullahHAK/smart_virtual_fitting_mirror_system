@@ -306,8 +306,8 @@ private fun PoseOverlay(
 
         val shoulderBand = bandWithWidth(0f, chestWidth * 0.90f)
         val chestBand = bandWithWidth(0.30f, chestWidth)
-        val waistBand = bandWithWidth(0.65f, chestWidth * 0.92f) // 88-95% of chest, never below 85%
-        val hemBand = bandWithWidth(1.0f, chestWidth * 0.98f)
+        val waistBand = bandWithWidth(0.65f, chestWidth * 0.98f) // near-chest width, minimal taper
+        val hemBand = bandWithWidth(1.0f, chestWidth)
 
         if (showShirt) {
             drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
