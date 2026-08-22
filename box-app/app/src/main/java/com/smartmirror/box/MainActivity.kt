@@ -304,6 +304,12 @@ private fun PoseOverlay(
         val hemBand = band(1.0f, hemWidth)
 
         if (showShirt) {
+            android.util.Log.d(
+                "ShirtFit",
+                "shoulderWidth=%.1f hipWidth=%.1f chestWidth=%.1f waistWidth=%.1f hemWidth=%.1f canvasWidth=%.1f".format(
+                    shoulderWidth, hipWidth, chestWidth, waistWidth, hemWidth, size.width
+                )
+            )
             drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
         }
 
