@@ -274,42 +274,33 @@ private fun PoseOverlay(
 
         val shoulderCenter = Offset((rawLeftShoulder.x + rawRightShoulder.x) / 2f, (rawLeftShoulder.y + rawRightShoulder.y) / 2f)
         val hipCenter = Offset((rawLeftHip.x + rawRightHip.x) / 2f, (rawLeftHip.y + rawRightHip.y) / 2f)
-        val shoulderWidth = kotlin.math.abs(rawRightShoulder.x - rawLeftShoulder.x)
-        val hipWidth = kotlin.math.abs(rawRightHip.x - rawLeftHip.x)
         val torsoHeight = hipCenter.y - shoulderCenter.y
 
         // Raise the shoulder line from the joint (roughly armpit height) up toward
         // collar height, so the shirt doesn't start at chest level.
         val collarLift = torsoHeight * 0.18f
-        val topY = shoulderCenter.y - collarLift
-        val shirtHeight = torsoHeight * 0.90f // LENGTH_RATIO
+        val liftedLeftShoulder = rawLeftShoulder.copy(y = rawLeftShoulder.y - collarLift)
+        val liftedRightShoulder = rawRightShoulder.copy(y = rawRightShoulder.y - collarLift)
 
-        // Independent width per band instead of one taper: shoulders are the
-        // narrowest reference, chest is deliberately wider than the shoulders
-        // (a shirt has to clear the chest, not hug the shoulder seam), waist
-        // interpolates toward hip width, hem follows hip width directly.
-        fun band(t: Float, width: Float): Pair<Offset, Offset> {
-            val centerX = lerpF(shoulderCenter.x, hipCenter.x, t)
-            val y = topY + shirtHeight * t
-            return Offset(centerX - width / 2f, y) to Offset(centerX + width / 2f, y)
-        }
+        // Each side's own line from shoulder to hip — anchored directly to real
+        // landmarks, so it follows the body's actual lean/tilt instead of a
+        // reconstructed center point (which drifted independently per row and
+        // made the shirt look crooked whenever hip-x wasn't exactly under
+        // shoulder-x, which is the normal case, not an edge case).
+        fun leftAt(t: Float) = lerp(liftedLeftShoulder, rawLeftHip, t)
+        fun rightAt(t: Float) = lerp(liftedRightShoulder, rawRightHip, t)
 
-        val chestWidth = shoulderWidth * 1.30f
-        val waistWidth = lerpF(chestWidth, hipWidth, 0.6f) * 1.10f
-        val hemWidth = hipWidth * 1.05f
+        // Independent widen-factor per row instead of one constant: chest pushes
+        // out further than the shoulder line, hem compensates for hip landmarks
+        // sitting anatomically closer together than shoulder landmarks do.
+        fun band(t: Float, widenFactor: Float) = widen(leftAt(t), rightAt(t), widenFactor)
 
-        val shoulderBand = band(0f, shoulderWidth * 1.1f)
-        val chestBand = band(0.30f, chestWidth)
-        val waistBand = band(0.65f, waistWidth)
-        val hemBand = band(1.0f, hemWidth)
+        val shoulderBand = band(0f, 1.4f)
+        val chestBand = band(0.30f, 1.9f)
+        val waistBand = band(0.65f, 1.9f)
+        val hemBand = band(1.0f, 2.1f)
 
         if (showShirt) {
-            android.util.Log.d(
-                "ShirtFit",
-                "shoulderWidth=%.1f hipWidth=%.1f chestWidth=%.1f waistWidth=%.1f hemWidth=%.1f canvasWidth=%.1f".format(
-                    shoulderWidth, hipWidth, chestWidth, waistWidth, hemWidth, size.width
-                )
-            )
             drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
         }
 
