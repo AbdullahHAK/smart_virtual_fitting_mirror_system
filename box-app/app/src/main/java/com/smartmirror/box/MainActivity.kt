@@ -206,8 +206,6 @@ private const val LEFT_SHOULDER = 11
 private const val RIGHT_SHOULDER = 12
 private const val LEFT_HIP = 23
 private const val RIGHT_HIP = 24
-private const val LEFT_KNEE = 25
-private const val RIGHT_KNEE = 26
 private const val LEFT_ANKLE = 27
 private const val RIGHT_ANKLE = 28
 
@@ -317,13 +315,11 @@ private fun PoseOverlay(
         // combined — since ankles sit much closer together than hips, that quad
         // narrowed hard toward the bottom and squeezed the whole two-leg image
         // into a single strip instead of two legs. Fixed by giving each leg its
-        // own independent outer edge (following that leg's own hip->knee->ankle
-        // landmarks, same principle as the shirt's per-side lines) while sharing
-        // one crotch/inseam column at the midpoint between the two legs — the
+        // own independent outer edge (following that leg's own hip->ankle line,
+        // same principle as the shirt's per-side lines) while sharing one
+        // crotch/inseam column at the midpoint between the two legs — the
         // source image's left half warps onto the left leg, right half onto the
         // right leg, split at that shared column.
-        val rawLeftKnee = point(LEFT_KNEE, size.width, size.height)
-        val rawRightKnee = point(RIGHT_KNEE, size.width, size.height)
         val rawLeftAnkle = point(LEFT_ANKLE, size.width, size.height)
         val rawRightAnkle = point(RIGHT_ANKLE, size.width, size.height)
         val hipWidthPx = kotlin.math.abs(rawRightHip.x - rawLeftHip.x)
@@ -338,8 +334,16 @@ private fun PoseOverlay(
         }
 
         val hipRow = legRow(rawLeftHip, rawRightHip, hipWidthPx * 0.55f)
-        val kneeRow = legRow(rawLeftKnee, rawRightKnee, hipWidthPx * 0.45f)
         val ankleRow = legRow(rawLeftAnkle, rawRightAnkle, hipWidthPx * 0.42f)
+        // Knee row is interpolated from hip->ankle rather than driven by the raw
+        // knee landmark directly. Knees are hard for MediaPipe to place
+        // confidently when the legs are fully covered by pants (no visible
+        // knee to detect), and the landmark smoother trusts its very first
+        // reading unconditionally — one bad initial knee estimate can get
+        // stuck for the whole session and pinch this row toward a point.
+        // Same "reactive landmark tracking is fragile" lesson as the shirt's
+        // reverted elbow-anchoring; trading knee-bend reactivity for reliability.
+        val kneeRow = hipRow.zip(ankleRow) { h, a -> lerp(h, a, 0.5f) }
 
         if (showPants) {
             drawMeshWarpedGarment(pantsBitmap, listOf(hipRow, kneeRow, ankleRow))
