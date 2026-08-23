@@ -377,7 +377,13 @@ private fun PoseOverlay(
             // a visible gap or the pants rendering on top of the shirt.
             val pantsTopNudge = hipWidthPx * 0.12f
             val hipRowAnchor = Offset(hemCenterX, hipCenterPx.y - pantsTopNudge)
-            val hipRow = legRow(hipRowAnchor, hemWidthPx, 0f)
+            // A t-shirt hem is usually curved/rounded at the corners, so the
+            // true visible fabric edge sits slightly inside the shirt's full
+            // bounding quad — using hemWidthPx exactly reads as a bit wider
+            // than the shirt. Since this is framed as a hard maximum (never
+            // exceed), staying a safety margin under the calculated value is
+            // the correct way to guarantee that, not chasing exact equality.
+            val hipRow = legRow(hipRowAnchor, hemWidthPx * 0.90f, 0f)
             // Ankle width is now a fraction of the (wider, hem-matched) waist
             // width itself, not of the old hip-landmark-based scale — that
             // mismatch is what made the taper read as a triangle/flare: a wide
