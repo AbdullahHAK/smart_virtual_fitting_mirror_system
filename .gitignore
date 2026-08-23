@@ -11,3 +11,5 @@ build/
 *.aab
 *.ap_
 *.dex
+.tools/
+*.output.txt
