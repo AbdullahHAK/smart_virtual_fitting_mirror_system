@@ -377,20 +377,18 @@ private fun PoseOverlay(
             // a visible gap or the pants rendering on top of the shirt.
             val pantsTopNudge = hipWidthPx * 0.12f
             val hipRowAnchor = Offset(hemCenterX, hipCenterPx.y - pantsTopNudge)
-            // A t-shirt hem is usually curved/rounded at the corners, so the
-            // true visible fabric edge sits slightly inside the shirt's full
-            // bounding quad — using hemWidthPx exactly reads as a bit wider
-            // than the shirt. Since this is framed as a hard maximum (never
-            // exceed), staying a safety margin under the calculated value is
-            // the correct way to guarantee that, not chasing exact equality.
-            val hipRow = legRow(hipRowAnchor, hemWidthPx * 0.90f, 0f)
-            // Ankle width is now a fraction of the (wider, hem-matched) waist
-            // width itself, not of the old hip-landmark-based scale — that
-            // mismatch is what made the taper read as a triangle/flare: a wide
-            // waist connected to a comparatively narrow ankle over two straight
-            // segments. A gentle, fixed ~20% taper reads as a normal straight
-            // jean leg instead.
-            val ankleRow = legRow(ankleCenterPx, hemWidthPx * 0.80f, 0f)
+            // hemWidthPx is derived from chestWidth (the shirt's widest point,
+            // shoulder-based), not a direct measurement of the rendered hem
+            // edge, and a t-shirt hem's curved corners sit inside that
+            // measurement too — a 90% margin still read as visibly wider than
+            // the shirt in practice, so cutting further based on the actual
+            // observed gap rather than nudging the same 10% again.
+            val waistWidthPx = hemWidthPx * 0.72f
+            val hipRow = legRow(hipRowAnchor, waistWidthPx, 0f)
+            // Ankle keeps the same ~89% taper ratio to the waist as before,
+            // just scaled down with the smaller waist so the leg shape itself
+            // doesn't change, only the overall size.
+            val ankleRow = legRow(ankleCenterPx, waistWidthPx * 0.89f, 0f)
             // Knee row interpolated from hip->ankle rather than driven by the raw
             // knee landmark: knees are hard for MediaPipe to place confidently
             // when fully covered by pants (no visible knee to detect), and a
