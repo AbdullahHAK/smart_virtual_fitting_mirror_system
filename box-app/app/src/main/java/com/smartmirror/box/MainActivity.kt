@@ -366,8 +366,11 @@ private fun PoseOverlay(
                 )
             }
 
-            val hipRow = legRow(hipCenterPx, hipWidthPx, hipWidthPx * 0.55f)
-            val ankleRow = legRow(ankleCenterPx, ankleWidthPx, hipWidthPx * 0.42f)
+            // Hip/ankle joint landmarks sit measurably inside the body's actual
+            // visible outline (most obvious on a muscular build), so ease needs
+            // to push out further than the landmark-only distance suggests.
+            val hipRow = legRow(hipCenterPx, hipWidthPx, hipWidthPx * 0.85f)
+            val ankleRow = legRow(ankleCenterPx, ankleWidthPx, hipWidthPx * 0.60f)
             // Knee row interpolated from hip->ankle rather than driven by the raw
             // knee landmark: knees are hard for MediaPipe to place confidently
             // when fully covered by pants (no visible knee to detect), and a
