@@ -210,7 +210,25 @@ private fun CameraPreviewScreen(
                     it.setSurfaceProvider(previewView.surfaceProvider)
                 }
 
+                // Capped to 640x480 for the analysis stream ONLY — this is the
+                // frame MediaPipe/the rotation step processes, invisible to the
+                // customer, and pose detection doesn't benefit from anything
+                // larger (the model resizes its input internally regardless).
+                // Preview above is untouched, so the on-screen mirror image
+                // stays full quality. Uncapped, CameraX was feeding analysis a
+                // much larger default frame, which is the main cost behind the
+                // low measured Pose FPS.
+                val analysisResolutionSelector = androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
+                    .setResolutionStrategy(
+                        androidx.camera.core.resolutionselector.ResolutionStrategy(
+                            android.util.Size(640, 480),
+                            androidx.camera.core.resolutionselector.ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                        )
+                    )
+                    .build()
+
                 val imageAnalysis = ImageAnalysis.Builder()
+                    .setResolutionSelector(analysisResolutionSelector)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
