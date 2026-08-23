@@ -346,12 +346,11 @@ private fun PoseOverlay(
         // is immune to it. See SymmetricPairSmoother for the full reasoning.
         if (showPants && hipCenterWidth != null && ankleCenterWidth != null) {
             val (hipCX, hipCY, hipWNorm) = hipCenterWidth
-            val (ankleCX, ankleCY, ankleWNorm) = ankleCenterWidth
+            val (ankleCX, ankleCY, _) = ankleCenterWidth
 
             val hipCenterPx = Offset(hipCX * size.width, hipCY * size.height)
             val ankleCenterPx = Offset(ankleCX * size.width, ankleCY * size.height)
             val hipWidthPx = hipWNorm * size.width
-            val ankleWidthPx = ankleWNorm * size.width
 
             fun legRow(centerPx: Offset, rowWidthPx: Float, easePx: Float): List<Offset> {
                 val outerHalf = rowWidthPx / 2f + easePx
@@ -379,7 +378,13 @@ private fun PoseOverlay(
             val pantsTopNudge = hipWidthPx * 0.12f
             val hipRowAnchor = Offset(hemCenterX, hipCenterPx.y - pantsTopNudge)
             val hipRow = legRow(hipRowAnchor, hemWidthPx, 0f)
-            val ankleRow = legRow(ankleCenterPx, ankleWidthPx, hipWidthPx * 0.60f)
+            // Ankle width is now a fraction of the (wider, hem-matched) waist
+            // width itself, not of the old hip-landmark-based scale — that
+            // mismatch is what made the taper read as a triangle/flare: a wide
+            // waist connected to a comparatively narrow ankle over two straight
+            // segments. A gentle, fixed ~20% taper reads as a normal straight
+            // jean leg instead.
+            val ankleRow = legRow(ankleCenterPx, hemWidthPx * 0.80f, 0f)
             // Knee row interpolated from hip->ankle rather than driven by the raw
             // knee landmark: knees are hard for MediaPipe to place confidently
             // when fully covered by pants (no visible knee to detect), and a
