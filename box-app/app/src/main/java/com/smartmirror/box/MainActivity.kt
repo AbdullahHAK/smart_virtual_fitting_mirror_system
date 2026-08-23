@@ -50,6 +50,14 @@ class MainActivity : ComponentActivity() {
     private var poseFps by mutableStateOf(0f)
     private val landmarkSmoother = LandmarkSmoother()
     private var lastPoseResultAtMs = 0L
+
+    // Hip/ankle center+width for the pants mesh, smoothed independently of
+    // the generic per-index landmark smoother above — see
+    // SymmetricPairSmoother for why left/right needs different handling here.
+    private var hipCenterWidth by mutableStateOf<Triple<Float, Float, Float>?>(null)
+    private var ankleCenterWidth by mutableStateOf<Triple<Float, Float, Float>?>(null)
+    private val hipSmoother = SymmetricPairSmoother()
+    private val ankleSmoother = SymmetricPairSmoother()
     private var showShirt by mutableStateOf(true)
     private var showPants by mutableStateOf(true)
     private var shirtColor by mutableStateOf("red")
@@ -78,6 +86,14 @@ class MainActivity : ComponentActivity() {
                 val landmarks = result.landmarks().firstOrNull()
                 if (landmarks != null) {
                     smoothedLandmarks = landmarkSmoother.update(landmarks)
+                    hipCenterWidth = hipSmoother.update(
+                        landmarks[LEFT_HIP].x(), landmarks[LEFT_HIP].y(),
+                        landmarks[RIGHT_HIP].x(), landmarks[RIGHT_HIP].y()
+                    )
+                    ankleCenterWidth = ankleSmoother.update(
+                        landmarks[LEFT_ANKLE].x(), landmarks[LEFT_ANKLE].y(),
+                        landmarks[RIGHT_ANKLE].x(), landmarks[RIGHT_ANKLE].y()
+                    )
                 }
                 val now = System.currentTimeMillis()
                 if (lastPoseResultAtMs != 0L) {
@@ -124,7 +140,15 @@ class MainActivity : ComponentActivity() {
                                 analysisExecutor = analysisExecutor,
                                 onFrame = { imageProxy -> poseLandmarkerHelper.detectAsync(imageProxy) }
                             )
-                            PoseOverlay(smoothedLandmarks, shirtBitmaps.getValue(shirtColor), pantsBitmap, showShirt, showPants)
+                            PoseOverlay(
+                                smoothedLandmarks,
+                                hipCenterWidth,
+                                ankleCenterWidth,
+                                shirtBitmaps.getValue(shirtColor),
+                                pantsBitmap,
+                                showShirt,
+                                showPants
+                            )
                             Text(
                                 text = "Box IP: ${localIpAddress() ?: "unknown"}:8080  |  Pose FPS: ${"%.0f".format(poseFps)}",
                                 color = Color.White,
@@ -231,6 +255,8 @@ private fun DrawScope.drawMeshWarpedGarment(bitmap: Bitmap, rows: List<List<Offs
 @Composable
 private fun PoseOverlay(
     smoothedLandmarks: Pair<FloatArray, FloatArray>?,
+    hipCenterWidth: Triple<Float, Float, Float>?,
+    ankleCenterWidth: Triple<Float, Float, Float>?,
     shirtBitmap: Bitmap,
     pantsBitmap: Bitmap,
     showShirt: Boolean,
@@ -311,41 +337,45 @@ private fun PoseOverlay(
             drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
         }
 
-        // Pants were previously one hip-width-to-ankle-width quad for BOTH legs
-        // combined — since ankles sit much closer together than hips, that quad
-        // narrowed hard toward the bottom and squeezed the whole two-leg image
-        // into a single strip instead of two legs. Fixed by giving each leg its
-        // own independent outer edge (following that leg's own hip->ankle line,
-        // same principle as the shirt's per-side lines) while sharing one
-        // crotch/inseam column at the midpoint between the two legs — the
-        // source image's left half warps onto the left leg, right half onto the
-        // right leg, split at that shared column.
-        val rawLeftAnkle = point(LEFT_ANKLE, size.width, size.height)
-        val rawRightAnkle = point(RIGHT_ANKLE, size.width, size.height)
-        val hipWidthPx = kotlin.math.abs(rawRightHip.x - rawLeftHip.x)
+        // Pants width/center come from hipCenterWidth/ankleCenterWidth (smoothed
+        // via SymmetricPairSmoother), NOT from the individually-smoothed raw
+        // left/right hip and ankle points. A prior version used raw per-side
+        // points directly and collapsed to a single line whenever the person
+        // faced the camera straight-on: a symmetric frontal pose gives MediaPipe
+        // the least visual asymmetry to tell left from right, so it can flicker
+        // which physical point is "left hip" vs "right hip" frame to frame —
+        // smoothing left.x and right.x separately then averages the flicker
+        // toward the centerline, dragging both edges inward. Center and width
+        // are invariant to that swap, so building the mesh from those instead
+        // is immune to it. See SymmetricPairSmoother for the full reasoning.
+        if (showPants && hipCenterWidth != null && ankleCenterWidth != null) {
+            val (hipCX, hipCY, hipWNorm) = hipCenterWidth
+            val (ankleCX, ankleCY, ankleWNorm) = ankleCenterWidth
 
-        fun legRow(left: Offset, right: Offset, halfWidth: Float): List<Offset> {
-            val crotch = Offset((left.x + right.x) / 2f, (left.y + right.y) / 2f)
-            return listOf(
-                Offset(left.x - halfWidth, left.y),
-                crotch,
-                Offset(right.x + halfWidth, right.y)
-            )
-        }
+            val hipCenterPx = Offset(hipCX * size.width, hipCY * size.height)
+            val ankleCenterPx = Offset(ankleCX * size.width, ankleCY * size.height)
+            val hipWidthPx = hipWNorm * size.width
+            val ankleWidthPx = ankleWNorm * size.width
 
-        val hipRow = legRow(rawLeftHip, rawRightHip, hipWidthPx * 0.55f)
-        val ankleRow = legRow(rawLeftAnkle, rawRightAnkle, hipWidthPx * 0.42f)
-        // Knee row is interpolated from hip->ankle rather than driven by the raw
-        // knee landmark directly. Knees are hard for MediaPipe to place
-        // confidently when the legs are fully covered by pants (no visible
-        // knee to detect), and the landmark smoother trusts its very first
-        // reading unconditionally — one bad initial knee estimate can get
-        // stuck for the whole session and pinch this row toward a point.
-        // Same "reactive landmark tracking is fragile" lesson as the shirt's
-        // reverted elbow-anchoring; trading knee-bend reactivity for reliability.
-        val kneeRow = hipRow.zip(ankleRow) { h, a -> lerp(h, a, 0.5f) }
+            fun legRow(centerPx: Offset, rowWidthPx: Float, easePx: Float): List<Offset> {
+                val outerHalf = rowWidthPx / 2f + easePx
+                return listOf(
+                    Offset(centerPx.x - outerHalf, centerPx.y),
+                    centerPx,
+                    Offset(centerPx.x + outerHalf, centerPx.y)
+                )
+            }
 
-        if (showPants) {
+            val hipRow = legRow(hipCenterPx, hipWidthPx, hipWidthPx * 0.55f)
+            val ankleRow = legRow(ankleCenterPx, ankleWidthPx, hipWidthPx * 0.42f)
+            // Knee row interpolated from hip->ankle rather than driven by the raw
+            // knee landmark: knees are hard for MediaPipe to place confidently
+            // when fully covered by pants (no visible knee to detect), and a
+            // stuck bad reading would pinch this row toward a point. Same
+            // "reactive landmark tracking is fragile" lesson as the shirt's
+            // reverted elbow-anchoring.
+            val kneeRow = hipRow.zip(ankleRow) { h, a -> lerp(h, a, 0.5f) }
+
             drawMeshWarpedGarment(pantsBitmap, listOf(hipRow, kneeRow, ankleRow))
         }
     }
