@@ -206,23 +206,27 @@ private const val LEFT_SHOULDER = 11
 private const val RIGHT_SHOULDER = 12
 private const val LEFT_HIP = 23
 private const val RIGHT_HIP = 24
+private const val LEFT_KNEE = 25
+private const val RIGHT_KNEE = 26
 private const val LEFT_ANKLE = 27
 private const val RIGHT_ANKLE = 28
 
-// Warps the bitmap onto a 2-column x N-row mesh via drawBitmapMesh — each row
-// is an independent (left, right) pair, so different bands of the garment
-// (e.g. shoulder/chest/waist/hem) can each have their own width instead of
-// one rigid quad or a single interpolated taper.
-private fun DrawScope.drawMeshWarpedGarment(bitmap: Bitmap, rows: List<Pair<Offset, Offset>>) {
-    val verts = FloatArray(rows.size * 4)
-    rows.forEachIndexed { i, (left, right) ->
-        verts[i * 4] = left.x
-        verts[i * 4 + 1] = left.y
-        verts[i * 4 + 2] = right.x
-        verts[i * 4 + 3] = right.y
+// Warps the bitmap onto an (N columns) x (M rows) mesh via drawBitmapMesh —
+// each row is an independent list of points, so garments needing more than a
+// left/right pair per row (e.g. pants: outer-left / crotch / outer-right) can
+// use the same function as simpler two-column garments.
+private fun DrawScope.drawMeshWarpedGarment(bitmap: Bitmap, rows: List<List<Offset>>) {
+    val cols = rows.first().size
+    val verts = FloatArray(rows.size * cols * 2)
+    var i = 0
+    for (row in rows) {
+        for (pt in row) {
+            verts[i++] = pt.x
+            verts[i++] = pt.y
+        }
     }
     drawIntoCanvas { canvas ->
-        canvas.nativeCanvas.drawBitmapMesh(bitmap, 1, rows.size - 1, verts, 0, null, 0, null)
+        canvas.nativeCanvas.drawBitmapMesh(bitmap, cols - 1, rows.size - 1, verts, 0, null, 0, null)
     }
 }
 
@@ -240,15 +244,6 @@ private fun PoseOverlay(
 
     fun point(index: Int, width: Float, height: Float) =
         Offset(lmX[index] * width, lmY[index] * height)
-
-    // Pushes a left/right pair apart around their midpoint. The garment images
-    // already include their own sleeve/leg width, so this only needs to scale
-    // the quad to roughly match body size, not fake the garment shape itself.
-    fun widen(left: Offset, right: Offset, factor: Float): Pair<Offset, Offset> {
-        val midX = (left.x + right.x) / 2f
-        return Offset(midX + (left.x - midX) * factor, left.y) to
-            Offset(midX + (right.x - midX) * factor, right.y)
-    }
 
     // Straight-line interpolation between a top and bottom anchor, used for the
     // mesh's middle row. Deliberately NOT tied to elbow/knee position: an
@@ -294,11 +289,11 @@ private fun PoseOverlay(
         // relationship holds regardless of any individual's shoulder/hip ratio,
         // instead of two independently-tuned numbers happening to combine into
         // the right result for whichever body was last tested.
-        fun bandWithWidth(t: Float, width: Float): Pair<Offset, Offset> {
+        fun bandWithWidth(t: Float, width: Float): List<Offset> {
             val l = leftAt(t)
             val r = rightAt(t)
             val midX = (l.x + r.x) / 2f
-            return Offset(midX - width / 2f, l.y) to Offset(midX + width / 2f, r.y)
+            return listOf(Offset(midX - width / 2f, l.y), Offset(midX + width / 2f, r.y))
         }
 
         val shoulderWidthPx = kotlin.math.abs(rawRightShoulder.x - rawLeftShoulder.x)
@@ -318,21 +313,36 @@ private fun PoseOverlay(
             drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
         }
 
-        val (leftHip, rightHip) = widen(rawLeftHip, rawRightHip, 2.1f)
-        val (leftAnkle, rightAnkle) = widen(
-            point(LEFT_ANKLE, size.width, size.height),
-            point(RIGHT_ANKLE, size.width, size.height),
-            1.4f
-        )
-        if (showPants) {
-            drawMeshWarpedGarment(
-                pantsBitmap,
-                listOf(
-                    leftHip to rightHip,
-                    lerp(leftHip, leftAnkle, 0.5f) to lerp(rightHip, rightAnkle, 0.5f),
-                    leftAnkle to rightAnkle
-                )
+        // Pants were previously one hip-width-to-ankle-width quad for BOTH legs
+        // combined — since ankles sit much closer together than hips, that quad
+        // narrowed hard toward the bottom and squeezed the whole two-leg image
+        // into a single strip instead of two legs. Fixed by giving each leg its
+        // own independent outer edge (following that leg's own hip->knee->ankle
+        // landmarks, same principle as the shirt's per-side lines) while sharing
+        // one crotch/inseam column at the midpoint between the two legs — the
+        // source image's left half warps onto the left leg, right half onto the
+        // right leg, split at that shared column.
+        val rawLeftKnee = point(LEFT_KNEE, size.width, size.height)
+        val rawRightKnee = point(RIGHT_KNEE, size.width, size.height)
+        val rawLeftAnkle = point(LEFT_ANKLE, size.width, size.height)
+        val rawRightAnkle = point(RIGHT_ANKLE, size.width, size.height)
+        val hipWidthPx = kotlin.math.abs(rawRightHip.x - rawLeftHip.x)
+
+        fun legRow(left: Offset, right: Offset, halfWidth: Float): List<Offset> {
+            val crotch = Offset((left.x + right.x) / 2f, (left.y + right.y) / 2f)
+            return listOf(
+                Offset(left.x - halfWidth, left.y),
+                crotch,
+                Offset(right.x + halfWidth, right.y)
             )
+        }
+
+        val hipRow = legRow(rawLeftHip, rawRightHip, hipWidthPx * 0.55f)
+        val kneeRow = legRow(rawLeftKnee, rawRightKnee, hipWidthPx * 0.45f)
+        val ankleRow = legRow(rawLeftAnkle, rawRightAnkle, hipWidthPx * 0.42f)
+
+        if (showPants) {
+            drawMeshWarpedGarment(pantsBitmap, listOf(hipRow, kneeRow, ankleRow))
         }
     }
 }
