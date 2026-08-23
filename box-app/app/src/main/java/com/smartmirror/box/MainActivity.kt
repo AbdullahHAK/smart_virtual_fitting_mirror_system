@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
     private var lastPoseResultAtMs = 0L
     private var showShirt by mutableStateOf(true)
     private var showPants by mutableStateOf(true)
-    private var shirtColor by mutableStateOf("blue")
+    private var shirtColor by mutableStateOf("red")
     private lateinit var commandServer: CommandServer
 
     private val requestPermissionLauncher =
