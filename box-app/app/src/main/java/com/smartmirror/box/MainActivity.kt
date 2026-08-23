@@ -333,10 +333,6 @@ private fun PoseOverlay(
         val waistBand = bandWithWidth(0.65f, chestWidth * 0.98f + 2f * garmentEaseMargin) // near-chest width, minimal taper
         val hemBand = bandWithWidth(1.0f, chestWidth + 2f * garmentEaseMargin)
 
-        if (showShirt) {
-            drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
-        }
-
         // Pants width/center come from hipCenterWidth/ankleCenterWidth (smoothed
         // via SymmetricPairSmoother), NOT from the individually-smoothed raw
         // left/right hip and ankle points. A prior version used raw per-side
@@ -369,7 +365,13 @@ private fun PoseOverlay(
             // Hip/ankle joint landmarks sit measurably inside the body's actual
             // visible outline (most obvious on a muscular build), so ease needs
             // to push out further than the landmark-only distance suggests.
-            val hipRow = legRow(hipCenterPx, hipWidthPx, hipWidthPx * 0.85f)
+            // The hip row's anchor is nudged a little above the hip landmark —
+            // not a general lengthening, just enough that the pants' top edge
+            // tucks behind the shirt hem (drawn after, below) instead of risking
+            // a visible gap or the pants rendering on top of the shirt.
+            val pantsTopNudge = hipWidthPx * 0.12f
+            val hipRowAnchor = hipCenterPx.copy(y = hipCenterPx.y - pantsTopNudge)
+            val hipRow = legRow(hipRowAnchor, hipWidthPx, hipWidthPx * 0.85f)
             val ankleRow = legRow(ankleCenterPx, ankleWidthPx, hipWidthPx * 0.60f)
             // Knee row interpolated from hip->ankle rather than driven by the raw
             // knee landmark: knees are hard for MediaPipe to place confidently
@@ -380,6 +382,13 @@ private fun PoseOverlay(
             val kneeRow = hipRow.zip(ankleRow) { h, a -> lerp(h, a, 0.5f) }
 
             drawMeshWarpedGarment(pantsBitmap, listOf(hipRow, kneeRow, ankleRow))
+        }
+
+        // Drawn after (on top of) pants: shirt hem visually occludes the top of
+        // the pants' waistband, matching real layering (body -> pants -> shirt)
+        // instead of risking the pants rendering over the shirt.
+        if (showShirt) {
+            drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
         }
     }
 }
