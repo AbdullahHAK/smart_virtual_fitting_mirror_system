@@ -362,16 +362,23 @@ private fun PoseOverlay(
                 )
             }
 
-            // Hip/ankle joint landmarks sit measurably inside the body's actual
-            // visible outline (most obvious on a muscular build), so ease needs
-            // to push out further than the landmark-only distance suggests.
+            // Waist width is taken directly from the shirt's own hem band
+            // (already computed above) instead of estimated independently from
+            // hip landmarks — guarantees the two line up by construction, not
+            // by two separately-tuned numbers happening to agree. Knee/ankle
+            // stay on their existing (unchanged) width, so the leg still tapers
+            // naturally from this wider waist rather than being widened
+            // uniformly along its whole length.
+            val hemWidthPx = kotlin.math.abs(hemBand[1].x - hemBand[0].x)
+            val hemCenterX = (hemBand[0].x + hemBand[1].x) / 2f
+
             // The hip row's anchor is nudged a little above the hip landmark —
             // not a general lengthening, just enough that the pants' top edge
             // tucks behind the shirt hem (drawn after, below) instead of risking
             // a visible gap or the pants rendering on top of the shirt.
             val pantsTopNudge = hipWidthPx * 0.12f
-            val hipRowAnchor = hipCenterPx.copy(y = hipCenterPx.y - pantsTopNudge)
-            val hipRow = legRow(hipRowAnchor, hipWidthPx, hipWidthPx * 0.85f)
+            val hipRowAnchor = Offset(hemCenterX, hipCenterPx.y - pantsTopNudge)
+            val hipRow = legRow(hipRowAnchor, hemWidthPx, 0f)
             val ankleRow = legRow(ankleCenterPx, ankleWidthPx, hipWidthPx * 0.60f)
             // Knee row interpolated from hip->ankle rather than driven by the raw
             // knee landmark: knees are hard for MediaPipe to place confidently
