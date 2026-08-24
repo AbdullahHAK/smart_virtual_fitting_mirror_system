@@ -44,8 +44,8 @@ All requests are plain HTTP GET, no authentication (this is a closed local-netwo
 Returns the full local catalog as JSON:
 ```json
 [
-  {"id": 1, "name": "Blue Shirt", "category": "shirt", "colorKey": "blue", "asset": "shirt_blue.png"},
-  {"id": 4, "name": "Classic Pants", "category": "pants", "colorKey": null, "asset": "pants_placeholder_front.png"}
+  {"id": 1, "name": "Black Shirt", "category": "shirt", "colorKey": "black", "asset": "shirt_black.png"},
+  {"id": 5, "name": "Classic Pants", "category": "pants", "colorKey": null, "asset": "pants_placeholder_front.png"}
 ]
 ```
 

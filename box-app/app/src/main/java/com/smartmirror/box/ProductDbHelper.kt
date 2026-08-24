@@ -8,7 +8,7 @@ import android.database.sqlite.SQLiteOpenHelper
 // The local product catalog lives only on the Box, per spec. The Tablet reads
 // it over the network (CommandServer's /products route) rather than holding
 // its own copy.
-class ProductDbHelper(context: Context) : SQLiteOpenHelper(context, "products.db", null, 1) {
+class ProductDbHelper(context: Context) : SQLiteOpenHelper(context, "products.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -32,10 +32,11 @@ class ProductDbHelper(context: Context) : SQLiteOpenHelper(context, "products.db
 
     private fun seed(db: SQLiteDatabase) {
         val rows = listOf(
-            Product(1, "Blue Shirt", "shirt", "blue", "shirt_blue.png"),
+            Product(1, "Black Shirt", "shirt", "black", "shirt_black.png"),
             Product(2, "Red Shirt", "shirt", "red", "shirt_red.png"),
-            Product(3, "Green Shirt", "shirt", "green", "shirt_green.png"),
-            Product(4, "Classic Pants", "pants", null, "pants_placeholder_front.png")
+            Product(3, "White Shirt", "shirt", "white", "shirt_white.png"),
+            Product(4, "Yellow Shirt", "shirt", "yellow", "shirt_yellow.png"),
+            Product(5, "Classic Pants", "pants", null, "pants_placeholder_front.png")
         )
         for (p in rows) {
             db.insert("products", null, ContentValues().apply {
