@@ -4,47 +4,41 @@ Two Android apps: `box-app` (runs on the Android Box + display + camera) and `ta
 They're separate Android Studio projects — open each one independently. They talk to each other over plain HTTP on the local Wi-Fi network; no internet connection is used anywhere.
 
 ## Status: Phase 1 MVP — working end to end
-- Live camera feed with MediaPipe Pose Landmarker tracking the body.
-- Shirt + pants garment images warp onto the tracked body (mesh warp anchored at shoulders/elbows/hips/knees/ankles), toggle on/off independently, shirt has 3 color variants.
-- box-app hosts a local product catalog (SQLite, seeded with 4 placeholder products) and a small HTTP command server.
+- Live camera feed with MediaPipe Pose Landmarker tracking the body, on-device, fully offline.
+- Landmark smoothing that's resistant to MediaPipe's left/right ambiguity in symmetric poses (see `SymmetricPairSmoother`), not just naive per-point averaging.
+- Shirt: multi-band mesh warp (shoulder/chest/waist/hem independently sized) tracking real body proportions.
+- Pants: independent per-leg mesh (hip/knee/ankle) sharing a crotch seam, waist width matched directly to the shirt's hem so the two garments read as one continuous outfit, correct shirt-over-pants layering at the waistband.
+- Shirt has 3 color variants; both garments toggle on/off independently.
+- box-app hosts a local product catalog (SQLite) and a small HTTP command server.
 - tablet-app fetches that catalog and lets you select/wear items and switch colors, live.
 
-Current garment art is placeholder (programmatically drawn shapes, not real product photos) — swapping in real photos later is just replacing the PNG assets in `box-app/app/src/main/assets/products/`, no code changes needed.
+Shirt and pants art are real product-style photos (currently test/stock images, not the client's actual catalog) — swapping in the client's real photos later is just replacing the PNG assets in `box-app/app/src/main/assets/products/`, no code changes needed.
 
 ## Setup
-1. Install Android Studio (developer.android.com/studio), Standard setup (bundles JDK + SDK).
-2. Open `box-app/` as a project (File > Open), let Gradle sync (needs internet the first time).
-3. Connect your device via USB (Developer Options + USB debugging enabled on the device), hit Run.
-4. Repeat for `tablet-app/` on a second device — or the same device via split-screen / same-device loopback (see below).
-5. **Both devices must be on the same Wi-Fi network** for tablet-app to reach box-app. USB is only used to install from Android Studio.
+See **[docs/INSTALL.md](docs/INSTALL.md)** for full setup steps, including a JDK compatibility issue worth reading before your first build.
 
-If Android Studio shows a "Gradle wrapper not found" prompt on first open, accept it — it regenerates the missing files automatically.
-
-### Testing with only one device
-Install both apps on the same phone and use Android's split-screen (or just switch between them). In tablet-app, use IP `127.0.0.1` instead of the box's Wi-Fi IP.
-
-### Sideloading without a USB data cable
-Build → Build Bundle(s)/APK(s) → Build APK(s) in Android Studio (no device connection needed), then serve the resulting `.apk` file from a local HTTP server on your laptop (e.g. `python -m http.server` in the output folder) and download it from the target device's browser over the same Wi-Fi network. Enable "install unknown apps" for the browser when prompted.
+Quick version:
+1. Install Android Studio (developer.android.com/studio), Standard setup.
+2. Open `box-app/` and `tablet-app/` as separate projects, build and run each onto a device.
+3. **Both devices must be on the same Wi-Fi network** — see [docs/NETWORK.md](docs/NETWORK.md) for the full protocol and troubleshooting.
 
 ## How the apps talk to each other
-box-app hosts an HTTP server on port **8080**. It shows its IP address on-screen (top-left) while running.
-
-- `GET /products` — returns the local catalog as JSON: `[{id, name, category, colorKey}, ...]`
-- `GET /set?shirt=0|1&pants=0|1&shirtColor=blue|red|green` — any combination of params; only the ones present are changed.
-
-tablet-app has an IP field (persisted between launches) and shows a connection status line after any request.
+Full reference in **[docs/NETWORK.md](docs/NETWORK.md)**. Short version: box-app hosts an HTTP server on port **8080** (`GET /products`, `GET /set?shirt=0|1&pants=0|1&shirtColor=...`), tablet-app is the only client, both must share a Wi-Fi network, no internet involved anywhere.
 
 ## Known limitations (by design, for this phase)
 - Only shirt + pants categories (no shoes/glasses/hats yet — glasses/hats need a face-landmark model in addition to Pose).
 - No barcode scanning, no full admin/catalog-editing UI, no offline sync beyond "same Wi-Fi required."
-- Garment images are placeholders, not real product photography.
-- Overlay is a 2D image warp (6-point mesh via `drawBitmapMesh`), not cloth simulation — expected to look like a tracked sticker, not photorealistic drape.
-- Not yet tested on the actual target hardware (Android Box model, USB camera, tablet model are still unconfirmed with the client).
+- Garment images are real photos but not the client's actual products yet.
+- Overlay is a 2D image warp, not cloth simulation — expected to look like a tracked garment silhouette, not photorealistic drape.
+- **Measured Pose FPS is ~9-10fps on the current test phone (Sharp AQUOS R5G), against the spec's ~30fps target.** Investigated two optimization angles (capped analysis resolution, GPU delegate) — neither moved the number, meaning this looks like a genuine model/hardware ceiling on this device rather than a fixable inefficiency. Landmark smoothing partially compensates visually. Performance on the actual target Android Box is unknown and could be better or worse.
+- Not yet tested on the actual target hardware (Android Box model, USB camera, tablet model are still unconfirmed with the client) — this is the single biggest open unknown for this project.
 
 ## Project layout
 - `box-app/app/src/main/java/com/smartmirror/box/`
-  - `MainActivity.kt` — camera preview, pose overlay composition, screen state
+  - `MainActivity.kt` — camera preview, pose overlay composition (shirt + pants mesh geometry), screen state
   - `PoseLandmarkerHelper.kt` — MediaPipe Pose Landmarker wrapper (LIVE_STREAM mode)
+  - `LandmarkSmoother.kt` — generic per-index exponential smoothing with low-confidence hold
+  - `SymmetricPairSmoother.kt` — center+width smoothing for hip/ankle, immune to MediaPipe's left/right flicker in symmetric poses
   - `CommandServer.kt` — NanoHTTPD server: `/set` and `/products` routes
   - `ProductDbHelper.kt` / `Product.kt` — local SQLite catalog
   - `assets/products/` — garment PNGs (transparent background) + the bundled `.task` pose model
