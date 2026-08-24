@@ -8,7 +8,7 @@ They're separate Android Studio projects — open each one independently. They t
 - Landmark smoothing that's resistant to MediaPipe's left/right ambiguity in symmetric poses (see `SymmetricPairSmoother`), not just naive per-point averaging.
 - Shirt: multi-band mesh warp (shoulder/chest/waist/hem independently sized) tracking real body proportions.
 - Pants: independent per-leg mesh (hip/knee/ankle) sharing a crotch seam, waist width matched directly to the shirt's hem so the two garments read as one continuous outfit, correct shirt-over-pants layering at the waistband.
-- Shirt has 3 color variants; both garments toggle on/off independently.
+- Any number of shirt/pants products can exist in the catalog (not a fixed color set) — the admin panel adds/removes them live; both garments toggle on/off independently.
 - box-app hosts a local product catalog (SQLite) and a small HTTP command server.
 - tablet-app fetches that catalog with real product thumbnails and lets you select/wear items, live.
 - Admin panel (on the tablet): add, edit, and delete catalog products — including uploading a new garment photo from the tablet's gallery — without touching code. Newly added products are immediately wearable on the mirror, not just listed.
@@ -25,7 +25,7 @@ Quick version:
 3. **Both devices must be on the same Wi-Fi network** — see [docs/NETWORK.md](docs/NETWORK.md) for the full protocol and troubleshooting.
 
 ## How the apps talk to each other
-Full reference in **[docs/NETWORK.md](docs/NETWORK.md)**. Short version: box-app hosts an HTTP server on port **8080** (`GET /products`, `GET /set?shirt=0|1&pants=0|1&shirtColor=...`), tablet-app is the only client, both must share a Wi-Fi network, no internet involved anywhere.
+Full reference in **[docs/NETWORK.md](docs/NETWORK.md)**. Short version: box-app hosts an HTTP server on port **8080** (`GET /products`, `GET /set?shirt=0|1&pants=0|1&shirtProductId=...&pantsProductId=...`, plus `/addProduct`, `/updateProduct`, `/deleteProduct`), tablet-app is the only client, both must share a Wi-Fi network, no internet involved anywhere.
 
 ## Known limitations (by design, for this phase)
 - Only shirt + pants categories (no shoes/glasses/hats yet — glasses/hats need a face-landmark model in addition to Pose).
