@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
                     -1L
                 } else {
                     val destFile = java.io.File(productImageDir(), "${java.util.UUID.randomUUID()}.png")
-                    java.io.File(imageTempPath).copyTo(destFile, overwrite = true)
+                    saveProcessedProductImage(imageTempPath, destFile)
                     productDb.insertProduct(name, category, colorKey, destFile.name)
                 }
             },
@@ -138,7 +138,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     val assetFileName = if (imageTempPath != null) {
                         val destFile = java.io.File(productImageDir(), "${java.util.UUID.randomUUID()}.png")
-                        java.io.File(imageTempPath).copyTo(destFile, overwrite = true)
+                        saveProcessedProductImage(imageTempPath, destFile)
                         destFile.name
                     } else {
                         existing.asset
@@ -250,6 +250,28 @@ class MainActivity : ComponentActivity() {
     private fun loadProductBitmap(fileName: String): Bitmap? {
         val bytes = loadProductBytes(fileName) ?: return null
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }
+
+    // Admin-uploaded photos are rarely pre-processed transparent PNGs — staff
+    // send a phone photo (often re-encoded to opaque JPEG by whatever app they
+    // used to transfer it), so background removal runs automatically here
+    // rather than trusting the upload to already have alpha. Downscaled first
+    // since a raw camera photo is far larger than the overlay needs and would
+    // make the flood-fill (and every future /productImage fetch) needlessly slow.
+    private fun saveProcessedProductImage(sourcePath: String, destFile: java.io.File) {
+        val original = BitmapFactory.decodeFile(sourcePath)
+        val downscaled = downscaleIfNeeded(original)
+        val processed = BackgroundRemover.removeBackground(downscaled)
+        java.io.FileOutputStream(destFile).use { out ->
+            processed.compress(Bitmap.CompressFormat.PNG, 100, out)
+        }
+    }
+
+    private fun downscaleIfNeeded(bitmap: Bitmap, maxDimension: Int = 1024): Bitmap {
+        val longest = maxOf(bitmap.width, bitmap.height)
+        if (longest <= maxDimension) return bitmap
+        val scale = maxDimension.toFloat() / longest
+        return Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
     }
 
     private fun localIpAddress(): String? =

@@ -12,6 +12,7 @@ They're separate Android Studio projects — open each one independently. They t
 - box-app hosts a local product catalog (SQLite) and a small HTTP command server.
 - tablet-app fetches that catalog with real product thumbnails and lets you select/wear items, live.
 - Admin panel (on the tablet): add, edit, and delete catalog products — including uploading a new garment photo from the tablet's gallery — without touching code. Newly added products are immediately wearable on the mirror, not just listed.
+- Uploaded photos get automatic background removal (on-device, no ML model/internet — see `docs/NETWORK.md`) so staff can upload a plain phone photo directly instead of a pre-processed transparent PNG.
 
 Shirt and pants art are real product-style photos (currently test/stock images, not the client's actual catalog) — swapping in the client's real photos later is just replacing the PNG assets in `box-app/app/src/main/assets/products/`, no code changes needed.
 

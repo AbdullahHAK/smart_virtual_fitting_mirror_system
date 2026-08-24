@@ -65,10 +65,12 @@ Changes what's shown on the mirror. Any combination of query parameters can be s
 Example: `http://192.168.0.101:8080/set?shirt=1&shirtProductId=2` — shows shirt product #2.
 
 ### `POST /addProduct` (multipart/form-data)
-Adds a new catalog item. Fields: `name`, `category` (`shirt` or `pants`), `colorKey` (optional), `image` (the garment PNG — **required**, since a product with no image can't be worn on the mirror). Returns `{"id": <new id>}` on success, or `400` if `image` is missing.
+Adds a new catalog item. Fields: `name`, `category` (`shirt` or `pants`), `colorKey` (optional), `image` (the garment photo — **required**, since a product with no image can't be worn on the mirror). Returns `{"id": <new id>}` on success, or `400` if `image` is missing.
+
+Every uploaded photo automatically goes through background removal (flood-fill from the image border, not an ML model — see `BackgroundRemover.kt`) and is downscaled to a max dimension of 1024px before being saved. This means staff can upload a plain phone photo directly — it doesn't need to be pre-processed into a transparent PNG. It only works well against a plain, fairly uniform background (a wall, sheet, or table) that's visibly different in color from the garment — a cluttered background or a garment that's close in color to its background won't separate cleanly.
 
 ### `POST /updateProduct` (multipart/form-data)
-Edits an existing item. Fields: `id`, `name`, `category`, `colorKey` (optional), `image` (optional — omit to keep the current image). Returns `404` if `id` doesn't exist.
+Edits an existing item. Fields: `id`, `name`, `category`, `colorKey` (optional), `image` (optional — omit to keep the current image; a new image goes through the same background removal as `/addProduct`). Returns `404` if `id` doesn't exist.
 
 ### `POST /deleteProduct?id=<id>`
 Removes a catalog item. Returns `404` if `id` doesn't exist.
