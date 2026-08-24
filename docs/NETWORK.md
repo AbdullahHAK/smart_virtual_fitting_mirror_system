@@ -69,6 +69,8 @@ Adds a new catalog item. Fields: `name`, `category` (`shirt` or `pants`), `color
 
 Every uploaded photo automatically goes through background removal (flood-fill from the image border, not an ML model — see `BackgroundRemover.kt`) and is downscaled to a max dimension of 1024px before being saved. This means staff can upload a plain phone photo directly — it doesn't need to be pre-processed into a transparent PNG. It only works well against a plain, fairly uniform background (a wall, sheet, or table) that's visibly different in color from the garment — a cluttered background or a garment that's close in color to its background won't separate cleanly.
 
+After background removal, the image is also auto-cropped to the garment's own tight bounding box (plus a small margin). This matters because the mirror's overlay stretches a garment photo's full width/height edge-to-edge onto the body — a photo where the garment only fills part of the frame (shot too far away, or off-center) would otherwise map that empty space onto the body too, making the garment look shrunk. Cropping fixes this regardless of how the original photo was framed.
+
 ### `POST /updateProduct` (multipart/form-data)
 Edits an existing item. Fields: `id`, `name`, `category`, `colorKey` (optional), `image` (optional — omit to keep the current image; a new image goes through the same background removal as `/addProduct`). Returns `404` if `id` doesn't exist.
 

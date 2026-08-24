@@ -16,6 +16,16 @@ object BackgroundRemover {
 
     private const val COLOR_THRESHOLD = 40
 
+    // The mesh-warp overlay stretches a bitmap's full width/height edge-to-edge
+    // onto the shoulder-to-hem (or hip-to-ankle) target area on the body — it
+    // has no idea where the garment actually sits within the source image. A
+    // photo where the garment only fills part of the frame (shot too far away,
+    // or off-center) would map that surrounding empty space onto the body too,
+    // shrinking the garment inside its target area. Cropping to the garment's
+    // own tight bounding box after background removal fixes this regardless of
+    // how the original photo was framed.
+    private const val CROP_MARGIN_RATIO = 0.03f
+
     fun removeBackground(source: Bitmap): Bitmap {
         val width = source.width
         val height = source.height
@@ -58,8 +68,48 @@ object BackgroundRemover {
             enqueueIfBackground(x, y + 1)
         }
 
-        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        result.setPixels(pixels, 0, width, 0, 0, width, height)
+        // Tight bounding box of surviving (non-background) pixels.
+        var minX = width
+        var maxX = -1
+        var minY = height
+        var maxY = -1
+        for (y in 0 until height) {
+            val rowBase = y * width
+            for (x in 0 until width) {
+                if (!visited[rowBase + x]) {
+                    if (x < minX) minX = x
+                    if (x > maxX) maxX = x
+                    if (y < minY) minY = y
+                    if (y > maxY) maxY = y
+                }
+            }
+        }
+
+        if (maxX < minX || maxY < minY) {
+            // Nothing survived (e.g. a photo of a blank/uniform surface with no
+            // actual garment) — fail safe with the un-cropped, background-
+            // stripped bitmap rather than crashing on an empty crop rect.
+            val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            result.setPixels(pixels, 0, width, 0, 0, width, height)
+            return result
+        }
+
+        val marginX = ((maxX - minX + 1) * CROP_MARGIN_RATIO).toInt()
+        val marginY = ((maxY - minY + 1) * CROP_MARGIN_RATIO).toInt()
+        val cropLeft = (minX - marginX).coerceAtLeast(0)
+        val cropTop = (minY - marginY).coerceAtLeast(0)
+        val cropRight = (maxX + marginX).coerceAtMost(width - 1)
+        val cropBottom = (maxY + marginY).coerceAtMost(height - 1)
+        val cropWidth = cropRight - cropLeft + 1
+        val cropHeight = cropBottom - cropTop + 1
+
+        val croppedPixels = IntArray(cropWidth * cropHeight)
+        for (y in 0 until cropHeight) {
+            System.arraycopy(pixels, (cropTop + y) * width + cropLeft, croppedPixels, y * cropWidth, cropWidth)
+        }
+
+        val result = Bitmap.createBitmap(cropWidth, cropHeight, Bitmap.Config.ARGB_8888)
+        result.setPixels(croppedPixels, 0, cropWidth, 0, 0, cropWidth, cropHeight)
         return result
     }
 
