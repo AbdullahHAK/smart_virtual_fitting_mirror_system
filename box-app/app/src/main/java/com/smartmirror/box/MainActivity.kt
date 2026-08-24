@@ -116,7 +116,14 @@ class MainActivity : ComponentActivity() {
 
         commandServer = CommandServer(
             port = 8080,
-            getProducts = { productDb.getAllProducts() }
+            getProducts = { productDb.getAllProducts() },
+            getAssetBytes = { fileName ->
+                try {
+                    assets.open("products/$fileName").use { it.readBytes() }
+                } catch (e: java.io.IOException) {
+                    null
+                }
+            }
         ) { shirt, pants, color ->
             shirt?.let { showShirt = it }
             pants?.let { showPants = it }

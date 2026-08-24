@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -24,8 +25,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -51,7 +54,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class CatalogProduct(val id: Int, val name: String, val category: String, val colorKey: String?)
+private data class CatalogProduct(val id: Int, val name: String, val category: String, val colorKey: String?, val asset: String?)
 
 private fun sendCommand(
     client: OkHttpClient,
@@ -100,7 +103,8 @@ private fun fetchProducts(
                         id = obj.getInt("id"),
                         name = obj.getString("name"),
                         category = obj.getString("category"),
-                        colorKey = obj.optString("colorKey").ifEmpty { null }
+                        colorKey = obj.optString("colorKey").ifEmpty { null },
+                        asset = obj.optString("asset").ifEmpty { null }
                     )
                 }
                 onResult(products)
@@ -178,6 +182,14 @@ private fun ControllerScreen(httpClient: OkHttpClient) {
         LazyColumn(modifier = Modifier.padding(top = 16.dp)) {
             items(products) { product ->
                 Row(modifier = Modifier.padding(vertical = 8.dp)) {
+                    if (product.asset != null) {
+                        AsyncImage(
+                            model = "http://$boxIp:8080/productImage?file=${product.asset}",
+                            contentDescription = product.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(56.dp).padding(end = 12.dp)
+                        )
+                    }
                     Text(product.name, modifier = Modifier.padding(end = 16.dp))
                     Button(onClick = {
                         val ok: (Boolean) -> Unit = { connected = it }
