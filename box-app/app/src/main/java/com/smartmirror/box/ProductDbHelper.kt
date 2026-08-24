@@ -48,6 +48,50 @@ class ProductDbHelper(context: Context) : SQLiteOpenHelper(context, "products.db
         }
     }
 
+    // Returns the new row's id (SQLite's INTEGER PRIMARY KEY is a rowid alias,
+    // so omitting "id" here auto-assigns the next one — no AUTOINCREMENT
+    // needed for a tiny local catalog with no strict-monotonicity requirement).
+    fun insertProduct(name: String, category: String, colorKey: String?, asset: String): Long =
+        writableDatabase.insert("products", null, ContentValues().apply {
+            put("name", name)
+            put("category", category)
+            put("colorKey", colorKey)
+            put("asset", asset)
+        })
+
+    fun updateProduct(id: Int, name: String, category: String, colorKey: String?, asset: String) {
+        writableDatabase.update(
+            "products",
+            ContentValues().apply {
+                put("name", name)
+                put("category", category)
+                put("colorKey", colorKey)
+                put("asset", asset)
+            },
+            "id = ?",
+            arrayOf(id.toString())
+        )
+    }
+
+    fun deleteProduct(id: Int) {
+        writableDatabase.delete("products", "id = ?", arrayOf(id.toString()))
+    }
+
+    fun getProduct(id: Int): Product? {
+        readableDatabase.query(
+            "products", null, "id = ?", arrayOf(id.toString()), null, null, null
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return Product(
+                id = cursor.getInt(cursor.getColumnIndexOrThrow("id")),
+                name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
+                category = cursor.getString(cursor.getColumnIndexOrThrow("category")),
+                colorKey = cursor.getString(cursor.getColumnIndexOrThrow("colorKey")),
+                asset = cursor.getString(cursor.getColumnIndexOrThrow("asset"))
+            )
+        }
+    }
+
     fun getAllProducts(): List<Product> {
         val result = mutableListOf<Product>()
         readableDatabase.query(

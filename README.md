@@ -10,7 +10,8 @@ They're separate Android Studio projects — open each one independently. They t
 - Pants: independent per-leg mesh (hip/knee/ankle) sharing a crotch seam, waist width matched directly to the shirt's hem so the two garments read as one continuous outfit, correct shirt-over-pants layering at the waistband.
 - Shirt has 3 color variants; both garments toggle on/off independently.
 - box-app hosts a local product catalog (SQLite) and a small HTTP command server.
-- tablet-app fetches that catalog and lets you select/wear items and switch colors, live.
+- tablet-app fetches that catalog with real product thumbnails and lets you select/wear items, live.
+- Admin panel (on the tablet): add, edit, and delete catalog products — including uploading a new garment photo from the tablet's gallery — without touching code. Newly added products are immediately wearable on the mirror, not just listed.
 
 Shirt and pants art are real product-style photos (currently test/stock images, not the client's actual catalog) — swapping in the client's real photos later is just replacing the PNG assets in `box-app/app/src/main/assets/products/`, no code changes needed.
 
@@ -27,7 +28,7 @@ Full reference in **[docs/NETWORK.md](docs/NETWORK.md)**. Short version: box-app
 
 ## Known limitations (by design, for this phase)
 - Only shirt + pants categories (no shoes/glasses/hats yet — glasses/hats need a face-landmark model in addition to Pose).
-- No barcode scanning, no full admin/catalog-editing UI, no offline sync beyond "same Wi-Fi required."
+- No barcode scanning, no offline sync beyond "same Wi-Fi required."
 - Garment images are real photos but not the client's actual products yet.
 - Overlay is a 2D image warp, not cloth simulation — expected to look like a tracked garment silhouette, not photorealistic drape.
 - **Measured Pose FPS is ~9-10fps on the current test phone (Sharp AQUOS R5G), against the spec's ~30fps target.** Investigated two optimization angles (capped analysis resolution, GPU delegate) — neither moved the number, meaning this looks like a genuine model/hardware ceiling on this device rather than a fixable inefficiency. Landmark smoothing partially compensates visually. Performance on the actual target Android Box is unknown and could be better or worse.
@@ -39,8 +40,8 @@ Full reference in **[docs/NETWORK.md](docs/NETWORK.md)**. Short version: box-app
   - `PoseLandmarkerHelper.kt` — MediaPipe Pose Landmarker wrapper (LIVE_STREAM mode)
   - `LandmarkSmoother.kt` — generic per-index exponential smoothing with low-confidence hold
   - `SymmetricPairSmoother.kt` — center+width smoothing for hip/ankle, immune to MediaPipe's left/right flicker in symmetric poses
-  - `CommandServer.kt` — NanoHTTPD server: `/set` and `/products` routes
-  - `ProductDbHelper.kt` / `Product.kt` — local SQLite catalog
-  - `assets/products/` — garment PNGs (transparent background) + the bundled `.task` pose model
+  - `CommandServer.kt` — NanoHTTPD server: `/set`, `/products`, `/productImage`, `/addProduct`, `/updateProduct`, `/deleteProduct`
+  - `ProductDbHelper.kt` / `Product.kt` — local SQLite catalog (CRUD)
+  - `assets/products/` — bundled garment PNGs (transparent background) + the `.task` pose model; admin-uploaded images live in app-internal storage instead, since assets/ is read-only at runtime
 - `tablet-app/app/src/main/java/com/smartmirror/tablet/`
-  - `MainActivity.kt` — IP field, shirt/pants switches, product list, all networking (OkHttp)
+  - `MainActivity.kt` — IP field, shirt/pants switches, product list with thumbnails, admin panel (add/edit/delete with image picker), all networking (OkHttp + Coil)

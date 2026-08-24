@@ -44,10 +44,13 @@ All requests are plain HTTP GET, no authentication (this is a closed local-netwo
 Returns the full local catalog as JSON:
 ```json
 [
-  {"id": 1, "name": "Blue Shirt", "category": "shirt", "colorKey": "blue"},
-  {"id": 4, "name": "Classic Pants", "category": "pants", "colorKey": null}
+  {"id": 1, "name": "Blue Shirt", "category": "shirt", "colorKey": "blue", "asset": "shirt_blue.png"},
+  {"id": 4, "name": "Classic Pants", "category": "pants", "colorKey": null, "asset": "pants_placeholder_front.png"}
 ]
 ```
+
+### `GET /productImage?file=<asset filename>`
+Returns the raw PNG bytes for a catalog item's `asset` field. Used by the tablet to show thumbnails and image previews.
 
 ### `GET /set`
 Changes what's shown on the mirror. Any combination of query parameters can be sent together; only the ones present are changed — omitted parameters leave that setting as-is.
@@ -56,9 +59,21 @@ Changes what's shown on the mirror. Any combination of query parameters can be s
 |---|---|---|
 | `shirt` | `0` or `1` | Hide / show the shirt |
 | `pants` | `0` or `1` | Hide / show the pants |
-| `shirtColor` | `blue`, `red`, `green` | Switch the shirt's color |
+| `shirtProductId` | a product `id` from `/products` (category `shirt`) | Switch which shirt is worn |
+| `pantsProductId` | a product `id` from `/products` (category `pants`) | Switch which pants are worn |
 
-Example: `http://192.168.0.101:8080/set?shirt=1&shirtColor=red` — shows the shirt in red.
+Example: `http://192.168.0.101:8080/set?shirt=1&shirtProductId=2` — shows shirt product #2.
+
+### `POST /addProduct` (multipart/form-data)
+Adds a new catalog item. Fields: `name`, `category` (`shirt` or `pants`), `colorKey` (optional), `image` (the garment PNG — **required**, since a product with no image can't be worn on the mirror). Returns `{"id": <new id>}` on success, or `400` if `image` is missing.
+
+### `POST /updateProduct` (multipart/form-data)
+Edits an existing item. Fields: `id`, `name`, `category`, `colorKey` (optional), `image` (optional — omit to keep the current image). Returns `404` if `id` doesn't exist.
+
+### `POST /deleteProduct?id=<id>`
+Removes a catalog item. Returns `404` if `id` doesn't exist.
+
+Uploaded/edited images are stored on the Box's internal storage (not the read-only app bundle), so admin changes persist across app restarts but not across an app reinstall/data-clear.
 
 ## Troubleshooting
 

@@ -60,7 +60,10 @@ class MainActivity : ComponentActivity() {
     private val ankleSmoother = SymmetricPairSmoother()
     private var showShirt by mutableStateOf(true)
     private var showPants by mutableStateOf(true)
-    private var shirtColor by mutableStateOf("red")
+    private var currentShirtProductId by mutableStateOf<Int?>(null)
+    private var currentPantsProductId by mutableStateOf<Int?>(null)
+    private var currentShirtBitmap by mutableStateOf<Bitmap?>(null)
+    private var currentPantsBitmap by mutableStateOf<Bitmap?>(null)
     private lateinit var commandServer: CommandServer
 
     private val requestPermissionLauncher =
@@ -105,29 +108,79 @@ class MainActivity : ComponentActivity() {
             onError = { /* surfaced later once we have a status UI */ }
         )
 
-        val shirtBitmaps = mapOf(
-            "blue" to loadAssetBitmap("products/shirt_blue.png"),
-            "red" to loadAssetBitmap("products/shirt_red.png"),
-            "green" to loadAssetBitmap("products/shirt_green.png")
-        )
-        val pantsBitmap = loadAssetBitmap("products/pants_placeholder_front.png")
-
         val productDb = ProductDbHelper(this)
+
+        val initialProducts = productDb.getAllProducts()
+        val initialShirt = initialProducts.firstOrNull { it.category == "shirt" }
+        val initialPants = initialProducts.firstOrNull { it.category == "pants" }
+        currentShirtProductId = initialShirt?.id
+        currentPantsProductId = initialPants?.id
+        currentShirtBitmap = initialShirt?.let { loadProductBitmap(it.asset) }
+        currentPantsBitmap = initialPants?.let { loadProductBitmap(it.asset) }
 
         commandServer = CommandServer(
             port = 8080,
             getProducts = { productDb.getAllProducts() },
-            getAssetBytes = { fileName ->
-                try {
-                    assets.open("products/$fileName").use { it.readBytes() }
-                } catch (e: java.io.IOException) {
-                    null
+            getAssetBytes = { fileName -> loadProductBytes(fileName) },
+            onAddProduct = { name, category, colorKey, imageTempPath ->
+                if (imageTempPath == null) {
+                    -1L
+                } else {
+                    val destFile = java.io.File(productImageDir(), "${java.util.UUID.randomUUID()}.png")
+                    java.io.File(imageTempPath).copyTo(destFile, overwrite = true)
+                    productDb.insertProduct(name, category, colorKey, destFile.name)
+                }
+            },
+            onUpdateProduct = { id, name, category, colorKey, imageTempPath ->
+                val existing = productDb.getProduct(id)
+                if (existing == null) {
+                    false
+                } else {
+                    val assetFileName = if (imageTempPath != null) {
+                        val destFile = java.io.File(productImageDir(), "${java.util.UUID.randomUUID()}.png")
+                        java.io.File(imageTempPath).copyTo(destFile, overwrite = true)
+                        destFile.name
+                    } else {
+                        existing.asset
+                    }
+                    productDb.updateProduct(id, name, category, colorKey, assetFileName)
+                    if (currentShirtProductId == id) currentShirtBitmap = loadProductBitmap(assetFileName)
+                    if (currentPantsProductId == id) currentPantsBitmap = loadProductBitmap(assetFileName)
+                    true
+                }
+            },
+            onDeleteProduct = { id ->
+                val existing = productDb.getProduct(id)
+                if (existing == null) {
+                    false
+                } else {
+                    productDb.deleteProduct(id)
+                    // Only ever delete files under the mutable products/ dir we
+                    // created ourselves — bundled assets/ images aren't touched.
+                    val f = java.io.File(productImageDir(), existing.asset)
+                    if (f.exists()) f.delete()
+                    true
                 }
             }
-        ) { shirt, pants, color ->
+        ) { shirt, pants, shirtProductId, pantsProductId ->
             shirt?.let { showShirt = it }
             pants?.let { showPants = it }
-            color?.let { if (shirtBitmaps.containsKey(it)) shirtColor = it }
+            shirtProductId?.let { id ->
+                productDb.getProduct(id)?.let { p ->
+                    if (p.category == "shirt") {
+                        currentShirtProductId = id
+                        currentShirtBitmap = loadProductBitmap(p.asset)
+                    }
+                }
+            }
+            pantsProductId?.let { id ->
+                productDb.getProduct(id)?.let { p ->
+                    if (p.category == "pants") {
+                        currentPantsProductId = id
+                        currentPantsBitmap = loadProductBitmap(p.asset)
+                    }
+                }
+            }
         }
         try {
             commandServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
@@ -151,8 +204,8 @@ class MainActivity : ComponentActivity() {
                                 smoothedLandmarks,
                                 hipCenterWidth,
                                 ankleCenterWidth,
-                                shirtBitmaps.getValue(shirtColor),
-                                pantsBitmap,
+                                currentShirtBitmap,
+                                currentPantsBitmap,
                                 showShirt,
                                 showPants
                             )
@@ -180,8 +233,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun loadAssetBitmap(path: String): Bitmap =
-        assets.open(path).use { BitmapFactory.decodeStream(it) }
+    // Uploaded/admin-edited product images live here (mutable, unlike assets/
+    // which is baked into the APK and read-only at runtime).
+    private fun productImageDir(): java.io.File = java.io.File(filesDir, "products").apply { mkdirs() }
+
+    private fun loadProductBytes(fileName: String): ByteArray? {
+        val file = java.io.File(productImageDir(), fileName)
+        if (file.exists()) return file.readBytes()
+        return try {
+            assets.open("products/$fileName").use { it.readBytes() }
+        } catch (e: java.io.IOException) {
+            null
+        }
+    }
+
+    private fun loadProductBitmap(fileName: String): Bitmap? {
+        val bytes = loadProductBytes(fileName) ?: return null
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }
 
     private fun localIpAddress(): String? =
         NetworkInterface.getNetworkInterfaces().asSequence()
@@ -282,8 +351,8 @@ private fun PoseOverlay(
     smoothedLandmarks: Pair<FloatArray, FloatArray>?,
     hipCenterWidth: Triple<Float, Float, Float>?,
     ankleCenterWidth: Triple<Float, Float, Float>?,
-    shirtBitmap: Bitmap,
-    pantsBitmap: Bitmap,
+    shirtBitmap: Bitmap?,
+    pantsBitmap: Bitmap?,
     showShirt: Boolean,
     showPants: Boolean
 ) {
@@ -369,7 +438,7 @@ private fun PoseOverlay(
         // toward the centerline, dragging both edges inward. Center and width
         // are invariant to that swap, so building the mesh from those instead
         // is immune to it. See SymmetricPairSmoother for the full reasoning.
-        if (showPants && hipCenterWidth != null && ankleCenterWidth != null) {
+        if (showPants && pantsBitmap != null && hipCenterWidth != null && ankleCenterWidth != null) {
             val (hipCX, hipCY, hipWNorm) = hipCenterWidth
             val (ankleCX, ankleCY, _) = ankleCenterWidth
 
@@ -428,7 +497,7 @@ private fun PoseOverlay(
         // Drawn after (on top of) pants: shirt hem visually occludes the top of
         // the pants' waistband, matching real layering (body -> pants -> shirt)
         // instead of risking the pants rendering over the shirt.
-        if (showShirt) {
+        if (showShirt && shirtBitmap != null) {
             drawMeshWarpedGarment(shirtBitmap, listOf(shoulderBand, chestBand, waistBand, hemBand))
         }
     }
